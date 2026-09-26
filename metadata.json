@@ -1,0 +1,8 @@
+{
+  "name": "MoveFIT",
+  "description": "Modern gym management and workout schedule tracking application with AI assistant Vic.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
