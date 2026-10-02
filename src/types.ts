@@ -1,5 +1,17 @@
 export type TrainingLevel = "Iniciante" | "Intermediário" | "Avançado";
 
+export type RecommendationCategory = "treino" | "aquecimento" | "exercicio" | "geral";
+
+export interface SavedRecommendation {
+  id: string;
+  userId: string;
+  title: string;
+  category: RecommendationCategory;
+  content: string;
+  sourceMessageId?: string;
+  savedAt: string;
+}
+
 export interface User {
   id: string;
   fullName: string;

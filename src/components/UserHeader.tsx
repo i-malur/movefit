@@ -1,13 +1,14 @@
 import React from "react";
 import { User } from "../types";
-import { LogOut, Dumbbell, ShieldCheck, HeartPulse, IdCard } from "lucide-react";
+import { LogOut, Dumbbell, ShieldCheck, HeartPulse, IdCard, User as UserIcon, Bookmark } from "lucide-react";
 
 interface UserHeaderProps {
   user: User;
   onLogout: () => void;
-  activeTab: "classes" | "vic";
-  setActiveTab: (tab: "classes" | "vic") => void;
+  activeTab: "classes" | "vic" | "profile";
+  setActiveTab: (tab: "classes" | "vic" | "profile") => void;
   bookedCount: number;
+  savedCount?: number;
 }
 
 export const UserHeader: React.FC<UserHeaderProps> = ({
@@ -16,6 +17,7 @@ export const UserHeader: React.FC<UserHeaderProps> = ({
   activeTab,
   setActiveTab,
   bookedCount,
+  savedCount = 0,
 }) => {
   // Extract initials (up to 2 letters)
   const initials = user.fullName
@@ -76,16 +78,20 @@ export const UserHeader: React.FC<UserHeaderProps> = ({
           <div className="absolute -top-16 -right-16 w-36 h-36 bg-[#845EC2]/15 rounded-full blur-2xl pointer-events-none"></div>
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
+            <div
+              onClick={() => setActiveTab("profile")}
+              className="flex items-center gap-4 cursor-pointer group"
+              title="Clique para acessar seu perfil"
+            >
               {/* Avatar circle */}
-              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-[#845EC2] to-[#00C0A3] flex items-center justify-center text-white font-extrabold text-xl sm:text-2xl shadow-lg shrink-0">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-[#845EC2] to-[#00C0A3] flex items-center justify-center text-white font-extrabold text-xl sm:text-2xl shadow-lg shrink-0 group-hover:scale-105 transition-transform">
                 {initials || "MF"}
               </div>
 
               {/* User details */}
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                  <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight group-hover:text-[#00C0A3] transition-colors">
                     Olá, {user.fullName}!
                   </h1>
                   <span
@@ -113,18 +119,31 @@ export const UserHeader: React.FC<UserHeaderProps> = ({
               </div>
             </div>
 
-            {/* Quick stats / Booked classes count */}
+            {/* Quick stats buttons */}
             <div className="flex items-center gap-2 self-start sm:self-center">
-              <div className="bg-[#1E1B24] border border-[#3E374C] px-3.5 py-2 rounded-xl text-center">
+              <button
+                onClick={() => setActiveTab("classes")}
+                className="bg-[#1E1B24] hover:bg-[#201c29] border border-[#3E374C] px-3.5 py-2 rounded-xl text-center transition-colors cursor-pointer"
+                title="Ver aulas agendadas"
+              >
                 <span className="block text-[11px] text-[#B0A8B9]">Aulas Agendadas</span>
                 <span className="text-base font-bold text-[#00C0A3]">{bookedCount}</span>
-              </div>
+              </button>
+
+              <button
+                onClick={() => setActiveTab("profile")}
+                className="bg-[#1E1B24] hover:bg-[#201c29] border border-[#3E374C] px-3.5 py-2 rounded-xl text-center transition-colors cursor-pointer"
+                title="Ver recomendações salvas"
+              >
+                <span className="block text-[11px] text-[#B0A8B9]">Salvos</span>
+                <span className="text-base font-bold text-[#845EC2]">{savedCount}</span>
+              </button>
             </div>
           </div>
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-2 mt-4">
+        <div className="flex items-center gap-2 mt-4 flex-wrap">
           <button
             id="tab-minhas-aulas"
             onClick={() => setActiveTab("classes")}
@@ -135,7 +154,7 @@ export const UserHeader: React.FC<UserHeaderProps> = ({
             }`}
           >
             <Dumbbell className="w-4 h-4 text-[#00C0A3]" />
-            Minhas Aulas
+            Aulas Coletivas
             {bookedCount > 0 && (
               <span className="ml-1 px-1.5 py-0.2 bg-[#00C0A3] text-black text-[10px] font-extrabold rounded-full">
                 {bookedCount}
@@ -163,8 +182,27 @@ export const UserHeader: React.FC<UserHeaderProps> = ({
             </div>
             Conversar com a Vic (IA)
           </button>
+
+          <button
+            id="tab-meu-perfil"
+            onClick={() => setActiveTab("profile")}
+            className={`flex-1 sm:flex-initial py-2.5 px-5 rounded-xl font-semibold text-xs sm:text-sm transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === "profile"
+                ? "bg-[#00C0A3] text-white shadow-lg glow-turquoise border border-[#00C0A3]"
+                : "bg-[#292433] text-[#B0A8B9] hover:text-white border border-[#3E374C]"
+            }`}
+          >
+            <UserIcon className="w-4 h-4" />
+            Meu Perfil
+            {(savedCount > 0 || bookedCount > 0) && (
+              <span className="ml-1 px-1.5 py-0.2 bg-[#845EC2] text-white text-[10px] font-extrabold rounded-full">
+                {savedCount}
+              </span>
+            )}
+          </button>
         </div>
       </div>
     </header>
   );
 };
+

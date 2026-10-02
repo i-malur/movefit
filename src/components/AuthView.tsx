@@ -11,6 +11,8 @@ import {
   EyeOff,
   CalendarCheck,
   Check,
+  Building2,
+  Info,
 } from "lucide-react";
 import { User, TrainingLevel } from "../types";
 
@@ -67,7 +69,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
 
     // Check mandatory fields
     if (!trimmedUser || !trimmedPass) {
-      setLoginError("Usuário e Senha são campos obrigatórios.");
+      setLoginError("Usuário/Matrícula e Senha são campos obrigatórios.");
       // AUTOMATICALLY CLEAR both fields as required
       setLoginUsername("");
       setLoginPassword("");
@@ -75,15 +77,18 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
       return;
     }
 
-    // Authenticate against registered users list
+    // Authenticate against registered users list (by username OR matricula)
     const foundUser = registeredUsers.find(
-      (u) => u.username.toLowerCase() === trimmedUser.toLowerCase() && u.password === trimmedPass
+      (u) =>
+        (u.username.toLowerCase() === trimmedUser.toLowerCase() ||
+          u.matricula?.toLowerCase() === trimmedUser.toLowerCase()) &&
+        u.password === trimmedPass
     );
 
     if (foundUser) {
       onLogin(foundUser);
     } else {
-      setLoginError("Credenciais inválidas. Usuário ou senha incorretos.");
+      setLoginError("Credenciais inválidas. Usuário/matrícula ou senha incorretos.");
       // AUTOMATICALLY CLEAR both input fields so user can re-type immediately
       setLoginUsername("");
       setLoginPassword("");
@@ -137,18 +142,31 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
       errors.push("Nível de Treino: selecione uma opção válida.");
     }
 
+    // 6. Matrícula *: Campo ESTRITAMENTE OBRIGATÓRIO! Estrutura exclusiva: MF-202X-00X (MF, ano de cadastro e número de cadastro)
+    const trimmedMatricula = regMatricula.trim().toUpperCase();
+    const matriculaRegex = /^MF-202[0-9X]-[0-9X]{3}$/i;
+
+    if (!trimmedMatricula) {
+      errors.push(
+        "Número de Matrícula: campo obrigatório. Se você ainda não possui matrícula, deve procurar a MoveFIT presencialmente na academia para se matricular."
+      );
+    } else if (!matriculaRegex.test(trimmedMatricula)) {
+      errors.push(
+        "Número de Matrícula: formato inválido. Deve seguir estritamente a estrutura MF-202X-00X (ex: MF-2026-001, com MF, ano de cadastro e número de cadastro)."
+      );
+    } else {
+      const matriculaExists = registeredUsers.some(
+        (u) => u.matricula?.toUpperCase() === trimmedMatricula
+      );
+      if (matriculaExists) {
+        errors.push("Número de Matrícula: este número de matrícula já está cadastrado no sistema.");
+      }
+    }
+
     // Accumulative errors
     if (errors.length > 0) {
       setRegErrors(errors);
       return;
-    }
-
-    // Generate unique ID if Matrícula is empty
-    let finalMatricula = regMatricula.trim();
-    if (!finalMatricula) {
-      const year = new Date().getFullYear();
-      const randomSeq = String(Math.floor(Math.random() * 9000) + 1000);
-      finalMatricula = `MF-${year}-${randomSeq}`;
     }
 
     const newUser: User = {
@@ -159,12 +177,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
       password: regPassword,
       trainingLevel: regLevel,
       medicalNotes: regMedicalNotes.trim() || "Nenhuma",
-      matricula: finalMatricula,
+      matricula: trimmedMatricula,
       createdAt: new Date().toISOString(),
     };
 
     onRegisterUser(newUser);
-    setRegSuccess(`Cadastro realizado com sucesso para ${newUser.fullName}! Matrícula: ${finalMatricula}.`);
+    setRegSuccess(`Cadastro realizado com sucesso para ${newUser.fullName}! Matrícula: ${trimmedMatricula}.`);
     
     // Switch to login tab and prefill username
     setTimeout(() => {
@@ -267,9 +285,17 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
                 </div>
               )}
 
+              {/* Informative Note for new students on login */}
+              <div className="bg-[#1E1B24] border border-[#3E374C] rounded-xl p-3 text-xs text-zinc-300 flex items-start gap-2.5">
+                <Building2 className="w-4 h-4 text-[#00C0A3] shrink-0 mt-0.5" />
+                <p className="leading-relaxed">
+                  <strong className="text-white">Ainda não é aluno MoveFIT?</strong> É necessário comparecer <strong>presencialmente à academia</strong> para realizar sua matrícula oficial e obter seu número de acesso.
+                </p>
+              </div>
+
               <div>
                 <label htmlFor="login-username" className="block text-xs font-semibold text-zinc-300 mb-1.5">
-                  Usuário <span className="text-red-400">*</span>
+                  Usuário ou Matrícula <span className="text-red-400">*</span>
                 </label>
                 <input
                   id="login-username"
@@ -277,7 +303,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
                   type="text"
                   value={loginUsername}
                   onChange={(e) => setLoginUsername(e.target.value)}
-                  placeholder="Seu usuário"
+                  placeholder="Seu usuário ou matrícula (ex: MF-2026-001)"
                   className="w-full h-11 px-3.5 bg-[#1E1B24] border border-[#3E374C] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] text-sm"
                 />
               </div>
@@ -332,6 +358,27 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
           {/* ==================== REGISTRATION FORM ==================== */}
           {activeTab === "register" && (
             <form onSubmit={handleRegisterSubmit} className="space-y-4">
+              {/* AVISO IMPORTANTE: MATRÍCULA PRESENCIAL OBRIGATÓRIA */}
+              <div
+                id="aviso-matricula-presencial"
+                className="bg-amber-500/10 border border-amber-500/35 rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm text-amber-200/95 flex items-start gap-3 shadow-inner"
+              >
+                <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0 mt-0.5">
+                  <Building2 className="w-4 h-4 text-amber-400" />
+                </div>
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-amber-300">Aviso: Matrícula Obrigatória</span>
+                    <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-amber-500/25 border border-amber-500/40 text-amber-300">
+                      Estrutura MF-202X-00X
+                    </span>
+                  </div>
+                  <p className="text-zinc-200 leading-relaxed text-xs">
+                    O <strong>número de matrícula é obrigatório</strong> e deve seguir exclusivamente a estrutura <strong>MF-202X-00X</strong> (onde <strong>MF</strong> é a sigla da academia, <strong>202X</strong> é o ano de cadastro e <strong>00X</strong> é o número de cadastro, ex: <code>MF-2026-001</code>). Se você ainda não possui matrícula ativa, <strong>procure a MoveFIT presencialmente na academia</strong> para se matricular na recepção física.
+                  </p>
+                </div>
+              </div>
+
               {/* Accumulative Error Banner */}
               {regErrors.length > 0 && (
                 <div
@@ -505,19 +552,33 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
                   </div>
                 </div>
 
-                {/* 6. Matrícula */}
+                {/* 6. Matrícula - OBRIGATÓRIO (Estrutura MF-202X-00X) */}
                 <div>
-                  <label htmlFor="reg-matricula" className="block text-xs font-medium text-zinc-300 mb-1">
-                    Matrícula <span className="text-zinc-500 font-normal">(Opcional)</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label htmlFor="reg-matricula" className="block text-xs font-semibold text-zinc-300">
+                      Número de Matrícula <span className="text-red-400">*</span>
+                    </label>
+                    <span className="text-[10px] text-amber-300 font-semibold flex items-center gap-1 font-mono">
+                      <Building2 className="w-3 h-3 text-amber-400" />
+                      MF-202X-00X
+                    </span>
+                  </div>
                   <input
                     id="reg-matricula"
                     type="text"
+                    required
                     value={regMatricula}
-                    onChange={(e) => setRegMatricula(e.target.value)}
-                    placeholder="Gerada automaticamente se vazio"
-                    className="w-full h-10 px-3 bg-[#1E1B24] border border-[#3E374C] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] text-sm"
+                    onChange={(e) => setRegMatricula(e.target.value.toUpperCase())}
+                    placeholder="MF-2026-001"
+                    maxLength={11}
+                    className="w-full h-10 px-3 bg-[#1E1B24] border border-[#3E374C] rounded-lg text-white font-mono placeholder-zinc-500 focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] text-sm uppercase tracking-wider"
                   />
+                  <p className="text-[11px] text-amber-300/90 mt-1 flex items-start gap-1">
+                    <Info className="w-3 h-3 text-amber-400 shrink-0 mt-0.5" />
+                    <span>
+                      Estrutura: <strong>MF-202X-00X</strong> (MF, ano e número de cadastro). Se não possuir, procure a MoveFIT presencialmente.
+                    </span>
+                  </p>
                 </div>
 
                 {/* 7. Observação Médica */}

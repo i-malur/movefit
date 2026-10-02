@@ -5,6 +5,8 @@ import {
   ChatMessage,
   GymClass,
   ChatAction,
+  SavedRecommendation,
+  RecommendationCategory,
 } from "../types";
 
 import {
@@ -26,6 +28,8 @@ import {
   Loader2,
   Settings2,
   Zap,
+  Bookmark,
+  BookmarkCheck,
 } from "lucide-react";
 
 interface VicChatTabProps {
@@ -41,6 +45,10 @@ interface VicChatTabProps {
   };
   onCancelBooking: (bookingId: string) => void;
   onNavigateToClasses?: () => void;
+  savedRecommendations?: SavedRecommendation[];
+  onSaveRecommendation?: (rec: Omit<SavedRecommendation, "id" | "savedAt" | "userId">) => void;
+  onRemoveRecommendation?: (recId: string) => void;
+  onNavigateToProfile?: () => void;
 }
 
 /* ============================================================
@@ -120,7 +128,107 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
   onBookClass,
   onCancelBooking,
   onNavigateToClasses,
+  savedRecommendations = [],
+  onSaveRecommendation,
+  onRemoveRecommendation,
+  onNavigateToProfile,
 }) => {
+  /* ==========================================================
+     RECOMENDAÇÕES SALVAS & TOAST NOTIFICATION
+  ========================================================== */
+
+  const [toastNotification, setToastNotification] = useState<string | null>(null);
+
+  const detectRecommendationCategory = (text: string): RecommendationCategory => {
+    const lower = text.toLowerCase();
+    if (
+      lower.includes("aqueciment") ||
+      lower.includes("esteira") ||
+      lower.includes("mobilidade") ||
+      lower.includes("elíptico") ||
+      lower.includes("remo seco") ||
+      lower.includes("corda")
+    ) {
+      return "aquecimento";
+    }
+    if (
+      lower.includes("treino principal") ||
+      lower.includes("treino secundário") ||
+      lower.includes("treino a") ||
+      lower.includes("treino b") ||
+      lower.includes("série") ||
+      lower.includes("repetições") ||
+      lower.includes("supino") ||
+      lower.includes("leg press") ||
+      lower.includes("agachamento") ||
+      lower.includes("drop-set") ||
+      lower.includes("remada") ||
+      lower.includes("puxada")
+    ) {
+      return "treino";
+    }
+    if (
+      lower.includes("execu") ||
+      lower.includes("exercício") ||
+      lower.includes("postura") ||
+      lower.includes("movimento") ||
+      lower.includes("biomecânica")
+    ) {
+      return "exercicio";
+    }
+    return "geral";
+  };
+
+  const extractRecommendationTitle = (text: string, category: RecommendationCategory): string => {
+    const firstLine = text.trim().split("\n")[0].replace(/[#*•-]/g, "").trim();
+    if (firstLine.length > 5 && firstLine.length <= 50) {
+      return firstLine;
+    }
+    switch (category) {
+      case "aquecimento":
+        return "Aquecimento Oficial MoveFIT";
+      case "treino":
+        return `Série de Treino (${user.trainingLevel})`;
+      case "exercicio":
+        return "Orientação de Exercício da Vic";
+      default:
+        return "Recomendação Personalizada da Vic";
+    }
+  };
+
+  const isMessageSaved = (msg: ChatMessage) => {
+    if (!savedRecommendations) return false;
+    return savedRecommendations.some(
+      (r) => r.sourceMessageId === msg.id || (r.content && r.content.trim() === msg.content.trim())
+    );
+  };
+
+  const handleToggleSaveRecommendation = (msg: ChatMessage) => {
+    const existing = savedRecommendations?.find(
+      (r) => r.sourceMessageId === msg.id || (r.content && r.content.trim() === msg.content.trim())
+    );
+
+    if (existing && onRemoveRecommendation) {
+      onRemoveRecommendation(existing.id);
+      setToastNotification("Recomendação removida dos seus salvos.");
+      setTimeout(() => setToastNotification(null), 3000);
+      return;
+    }
+
+    if (onSaveRecommendation) {
+      const category = detectRecommendationCategory(msg.content);
+      const title = extractRecommendationTitle(msg.content, category);
+      onSaveRecommendation({
+        title,
+        category,
+        content: msg.content,
+        sourceMessageId: msg.id,
+      });
+      setToastNotification("Recomendação salva no seu Perfil! ✨");
+      setTimeout(() => setToastNotification(null), 4000);
+    }
+  };
+
   /* ==========================================================
      MENSAGENS
   ========================================================== */
@@ -1714,11 +1822,11 @@ Estou a par de tudo: seu nível é **${user.trainingLevel}**, sua observação m
                     </div>
 
                     {/* ==================================================
-                        CONTROLES DE ÁUDIO DA VIC
+                        CONTROLES DE ÁUDIO & SALVAR RECOMENDAÇÃO
                     ================================================== */}
 
                     {isVic && (
-                      <div className="mt-2 flex items-center gap-2">
+                      <div className="mt-2.5 flex items-center gap-2 flex-wrap">
 
                         {isAudioLoading && audioLoadingMessageId === msg.id ? (
                           <button
@@ -1746,6 +1854,32 @@ Estou a par de tudo: seu nível é **${user.trainingLevel}**, sua observação m
                           >
                             <Volume2 className="w-3 h-3" />
                             Ouvir
+                          </button>
+                        )}
+
+                        {/* Botão de Salvar Recomendação */}
+                        {onSaveRecommendation && msg.id !== "msg-welcome" && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSaveRecommendation(msg)}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
+                              isMessageSaved(msg)
+                                ? "bg-[#845EC2]/30 text-[#d6c7f7] border border-[#845EC2]/60 hover:bg-[#845EC2]/40"
+                                : "bg-[#292433] hover:bg-[#342f40] text-zinc-300 hover:text-white border border-[#3E374C]"
+                            }`}
+                            title={isMessageSaved(msg) ? "Recomendação salva no seu perfil (clique para remover)" : "Salvar esta recomendação no seu perfil"}
+                          >
+                            {isMessageSaved(msg) ? (
+                              <>
+                                <BookmarkCheck className="w-3 h-3 text-[#00C0A3]" />
+                                <span>Salva no Perfil</span>
+                              </>
+                            ) : (
+                              <>
+                                <Bookmark className="w-3 h-3 text-zinc-400" />
+                                <span>Salvar Recomendação</span>
+                              </>
+                            )}
                           </button>
                         )}
 
@@ -2094,6 +2228,24 @@ Estou a par de tudo: seu nível é **${user.trainingLevel}**, sua observação m
         </div>
 
       </div>
+
+      {/* ========================================================
+          TOAST NOTIFICATION DE RECOMENDAÇÃO SALVA
+      ======================================================== */}
+      {toastNotification && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#292433] border border-[#00C0A3]/50 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2">
+          <CheckCircle2 className="w-5 h-5 text-[#00C0A3] shrink-0" />
+          <span className="text-xs font-semibold">{toastNotification}</span>
+          {onNavigateToProfile && (
+            <button
+              onClick={onNavigateToProfile}
+              className="ml-2 px-2.5 py-1 rounded-lg bg-[#00C0A3]/15 hover:bg-[#00C0A3]/25 text-[#00C0A3] text-xs font-bold transition-colors cursor-pointer"
+            >
+              Ver Perfil →
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };

@@ -792,6 +792,9 @@ app.post(
       const userName =
         user?.fullName || "Aluno(a)";
 
+      const userMatricula =
+        user?.matricula || "Não informada";
+
       const trainingLevel =
         user?.trainingLevel || "Iniciante";
 
@@ -840,9 +843,15 @@ PERSONALIDADE:
 
 CONTEXTO DO ALUNO:
 - Nome: ${userName}
+- Matrícula: ${userMatricula}
 - Nível de treino: ${trainingLevel}
 - Observações médicas: ${medicalNotes}
 - Aulas agendadas: ${bookedClasses}
+
+REGRA OBRIGATÓRIA DE MATRÍCULA:
+- O número de matrícula é ESTRITAMENTE OBRIGATÓRIO para todos os alunos da MoveFIT poderem utilizar o aplicativo e agendar aulas coletivas.
+- A matrícula segue estritamente a estrutura MF-202X-00X (onde MF é a sigla MoveFIT, 202X é o ano de cadastro e 00X é o número sequencial do aluno, ex: MF-2026-001).
+- Se o aluno ou visitante perguntar sobre matrícula, disser que não tem número de matrícula ou perguntar como se matricular, informe com simpatia, energia positiva e clareza que o número de matrícula é obrigatório na estrutura MF-202X-00X e que ele deve comparecer presencialmente à unidade da Academia MoveFIT para se matricular na recepção física com a equipe.
 
 AULAS COLETIVAS OFICIAIS:
 
@@ -1050,6 +1059,23 @@ Ser a personal trainer digital da MoveFIT e ajudar o aluno com:
       // ======================================================
 
       if (!ai) {
+        const lowerMsg = message.toLowerCase();
+        if (
+          lowerMsg.includes("matrícula") ||
+          lowerMsg.includes("matricula") ||
+          lowerMsg.includes("presencial") ||
+          lowerMsg.includes("se matricular") ||
+          lowerMsg.includes("fazer matrícula") ||
+          lowerMsg.includes("fazer matricula") ||
+          lowerMsg.includes("não tenho matrícula") ||
+          lowerMsg.includes("nao tenho matricula") ||
+          lowerMsg.includes("como me matricular")
+        ) {
+          return res.json({
+            reply: `O número de matrícula é obrigatório para todos os alunos da MoveFIT e deve seguir a estrutura MF-202X-00X (ex: MF-2026-001)! 💪 Se você ainda não possui sua matrícula, é necessário comparecer presencialmente à recepção da Academia MoveFIT para se matricular e retirar seu número oficial de acesso. Estamos te esperando de braços abertos! 💗`,
+          });
+        }
+
         const parsedAction =
           parseBookingIntent(message);
 

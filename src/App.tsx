@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { User, GymClass, BookedClass } from "./types";
+import { User, GymClass, BookedClass, SavedRecommendation } from "./types";
 import { INITIAL_CLASSES } from "./data/initialClasses";
 import { AuthView } from "./components/AuthView";
 import { UserHeader } from "./components/UserHeader";
 import { ClassesTab } from "./components/ClassesTab";
 import { VicChatTab } from "./components/VicChatTab";
+import { ProfileTab } from "./components/ProfileTab";
 
 // Default demo user to enable immediate testing or login
 const DEFAULT_DEMO_USER: User = {
@@ -15,7 +16,7 @@ const DEFAULT_DEMO_USER: User = {
   password: "Movefit@2026",
   trainingLevel: "Intermediário",
   medicalNotes: "Nenhuma",
-  matricula: "MF-2026-0101",
+  matricula: "MF-2026-001",
   createdAt: "2026-01-10T10:00:00Z",
 };
 
@@ -26,7 +27,14 @@ export default function App() {
       const saved = localStorage.getItem("movefit_users");
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Normalize legacy demo matricula to MF-2026-001 structure
+          return parsed.map((u: User) =>
+            u.username === "marialuiza.fit" && (!u.matricula || u.matricula === "MF-2026-0101")
+              ? { ...u, matricula: "MF-2026-001" }
+              : u
+          );
+        }
       }
     } catch (e) {
       console.error(e);
@@ -39,12 +47,48 @@ export default function App() {
     try {
       const saved = localStorage.getItem("movefit_active_user");
       if (saved) {
-        return JSON.parse(saved);
+        const user = JSON.parse(saved);
+        if (user?.username === "marialuiza.fit" && (!user.matricula || user.matricula === "MF-2026-0101")) {
+          return { ...user, matricula: "MF-2026-001" };
+        }
+        return user;
       }
     } catch (e) {
       console.error(e);
     }
     return null;
+  });
+
+  // Saved recommendations state
+  const [savedRecommendations, setSavedRecommendations] = useState<SavedRecommendation[]>(() => {
+    try {
+      const saved = localStorage.getItem("movefit_saved_recommendations");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    // Seed initial curated recommendations for Maria Luiza demo account
+    return [
+      {
+        id: "rec-seed-01",
+        userId: "user-demo-01",
+        title: "Aquecimento Obrigatório (Intermediário)",
+        category: "aquecimento",
+        content: "• 8 a 10 minutos de esteira em ritmo moderado ou elíptico.\n• Mobilidade dinâmica articular (quadris, ombros e tornozelos).\n• Duração total recomendada: 10 minutos antes do treino principal.",
+        savedAt: "26/09/2026, 14:30",
+      },
+      {
+        id: "rec-seed-02",
+        userId: "user-demo-01",
+        title: "Treino A: Peito, Ombros e Tríceps",
+        category: "treino",
+        content: "• Treino Principal:\n  - Supino Inclinado com Halteres (4x10)\n  - Voador Peitoral (3x12)\n  - Elevação Lateral de Ombros (4x12)\n\n• Treino Secundário:\n  - Tríceps Testa no Pulley (3x12)\n  - Abdominal Infra no Banco Inclinado (3x20)",
+        savedAt: "28/09/2026, 10:15",
+      },
+    ];
   });
 
   // Gym classes state (spots available)
@@ -82,12 +126,17 @@ export default function App() {
   const [bookedClasses, setBookedClasses] = useState<BookedClass[]>([]);
 
   // Navigation tab
-  const [activeTab, setActiveTab] = useState<"classes" | "vic">("classes");
+  const [activeTab, setActiveTab] = useState<"classes" | "vic" | "profile">("classes");
 
   // Save registered users whenever changed
   useEffect(() => {
     localStorage.setItem("movefit_users", JSON.stringify(registeredUsers));
   }, [registeredUsers]);
+
+  // Save recommendations whenever changed
+  useEffect(() => {
+    localStorage.setItem("movefit_saved_recommendations", JSON.stringify(savedRecommendations));
+  }, [savedRecommendations]);
 
   // Save active user whenever changed
   useEffect(() => {
@@ -264,6 +313,55 @@ export default function App() {
     setBookedClasses((prev) => prev.filter((b) => b.bookingId !== bookingId));
   };
 
+  // Filter recommendations for current user
+  const userSavedRecommendations = savedRecommendations.filter(
+    (r) => r.userId === currentUser?.id
+  );
+
+  // Handler to save new recommendation from Vic
+  const handleSaveRecommendation = (
+    recData: Omit<SavedRecommendation, "id" | "savedAt" | "userId">
+  ) => {
+    if (!currentUser) return;
+    const newRec: SavedRecommendation = {
+      ...recData,
+      id: `rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      userId: currentUser.id,
+      savedAt: new Date().toLocaleString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    };
+    setSavedRecommendations((prev) => [newRec, ...prev]);
+  };
+
+  // Handler to remove saved recommendation
+  const handleRemoveRecommendation = (recId: string) => {
+    setSavedRecommendations((prev) => prev.filter((r) => r.id !== recId));
+  };
+
+  // Handler to update user information (name, email, level, notes, password)
+  const handleUpdateUser = (updatedData: Partial<User>): { success: boolean; message: string } => {
+    if (!currentUser) return { success: false, message: "Nenhum usuário logado." };
+
+    const updatedUser: User = {
+      ...currentUser,
+      ...updatedData,
+    };
+
+    setCurrentUser(updatedUser);
+
+    setRegisteredUsers((prev) =>
+      prev.map((u) => (u.id === updatedUser.id ? updatedUser : u))
+    );
+
+    localStorage.setItem("movefit_active_user", JSON.stringify(updatedUser));
+    return { success: true, message: "Perfil atualizado com sucesso!" };
+  };
+
   // Render view
   if (!currentUser) {
     return (
@@ -283,6 +381,7 @@ export default function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         bookedCount={bookedClasses.length}
+        savedCount={userSavedRecommendations.length}
       />
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-6">
@@ -294,7 +393,7 @@ export default function App() {
             onCancelBooking={handleCancelBooking}
             onNavigateToVic={() => setActiveTab("vic")}
           />
-        ) : (
+        ) : activeTab === "vic" ? (
           <VicChatTab
             user={currentUser}
             bookedClasses={bookedClasses}
@@ -302,6 +401,21 @@ export default function App() {
             onBookClass={handleBookClass}
             onCancelBooking={handleCancelBooking}
             onNavigateToClasses={() => setActiveTab("classes")}
+            savedRecommendations={userSavedRecommendations}
+            onSaveRecommendation={handleSaveRecommendation}
+            onRemoveRecommendation={handleRemoveRecommendation}
+            onNavigateToProfile={() => setActiveTab("profile")}
+          />
+        ) : (
+          <ProfileTab
+            user={currentUser}
+            bookedClasses={bookedClasses}
+            savedRecommendations={userSavedRecommendations}
+            onUpdateUser={handleUpdateUser}
+            onCancelBooking={handleCancelBooking}
+            onRemoveRecommendation={handleRemoveRecommendation}
+            onNavigateToClasses={() => setActiveTab("classes")}
+            onNavigateToVic={() => setActiveTab("vic")}
           />
         )}
       </main>
