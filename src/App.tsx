@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { User, GymClass, BookedClass, SavedRecommendation } from "./types";
 import { INITIAL_CLASSES } from "./data/initialClasses";
 import { AuthView } from "./components/AuthView";
@@ -7,7 +7,6 @@ import { ClassesTab } from "./components/ClassesTab";
 import { VicChatTab } from "./components/VicChatTab";
 import { ProfileTab } from "./components/ProfileTab";
 
-// Default demo user to enable immediate testing or login
 const DEFAULT_DEMO_USER: User = {
   id: "user-demo-01",
   fullName: "Maria Luiza Fernandes",
@@ -21,20 +20,12 @@ const DEFAULT_DEMO_USER: User = {
 };
 
 export default function App() {
-  // Users state
   const [registeredUsers, setRegisteredUsers] = useState<User[]>(() => {
     try {
       const saved = localStorage.getItem("movefit_users");
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Normalize legacy demo matricula to MF-2026-001 structure
-          return parsed.map((u: User) =>
-            u.username === "marialuiza.fit" && (!u.matricula || u.matricula === "MF-2026-0101")
-              ? { ...u, matricula: "MF-2026-001" }
-              : u
-          );
-        }
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch (e) {
       console.error(e);
@@ -42,152 +33,73 @@ export default function App() {
     return [DEFAULT_DEMO_USER];
   });
 
-  // Active session
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
       const saved = localStorage.getItem("movefit_active_user");
-      if (saved) {
-        const user = JSON.parse(saved);
-        if (user?.username === "marialuiza.fit" && (!user.matricula || user.matricula === "MF-2026-0101")) {
-          return { ...user, matricula: "MF-2026-001" };
-        }
-        return user;
-      }
+      if (saved) return JSON.parse(saved);
     } catch (e) {
       console.error(e);
     }
     return null;
   });
 
-  // Saved recommendations state
-  const [savedRecommendations, setSavedRecommendations] = useState<SavedRecommendation[]>(() => {
-    try {
-      const saved = localStorage.getItem("movefit_saved_recommendations");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    // Seed initial curated recommendations for Maria Luiza demo account
-    return [
-      {
-        id: "rec-seed-01",
-        userId: "user-demo-01",
-        title: "Aquecimento Obrigatório (Intermediário)",
-        category: "aquecimento",
-        content: "• 8 a 10 minutos de esteira em ritmo moderado ou elíptico.\n• Mobilidade dinâmica articular (quadris, ombros e tornozelos).\n• Duração total recomendada: 10 minutos antes do treino principal.",
-        savedAt: "26/09/2026, 14:30",
-      },
-      {
-        id: "rec-seed-02",
-        userId: "user-demo-01",
-        title: "Treino A: Peito, Ombros e Tríceps",
-        category: "treino",
-        content: "• Treino Principal:\n  - Supino Inclinado com Halteres (4x10)\n  - Voador Peitoral (3x12)\n  - Elevação Lateral de Ombros (4x12)\n\n• Treino Secundário:\n  - Tríceps Testa no Pulley (3x12)\n  - Abdominal Infra no Banco Inclinado (3x20)",
-        savedAt: "28/09/2026, 10:15",
-      },
-    ];
-  });
-
-  // Gym classes state (spots available)
-  const [gymClasses, setGymClasses] = useState<GymClass[]>(() => {
-    try {
-      const saved = localStorage.getItem("movefit_classes");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Normalize and merge with INITIAL_CLASSES according to official script
-          return INITIAL_CLASSES.map((initCls) => {
-            const match = parsed.find(
-              (p: any) =>
-                p.id === initCls.id ||
-                (initCls.id === "funcional" && p.id === "treino-funcional")
-            );
-            if (!match) return initCls;
-            return {
-              ...initCls,
-              slots: initCls.slots.map((initSlot) => {
-                const savedSlot = match.slots?.find((s: any) => s.time === initSlot.time);
-                return savedSlot ? { ...initSlot, bookedSpots: savedSlot.bookedSpots } : initSlot;
-              }),
-            };
-          });
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    return INITIAL_CLASSES;
-  });
-
-  // Booked classes for current user
+  const [savedRecommendations, setSavedRecommendations] = useState<SavedRecommendation[]>([]);
+  const [gymClasses, setGymClasses] = useState<GymClass[]>(INITIAL_CLASSES);
   const [bookedClasses, setBookedClasses] = useState<BookedClass[]>([]);
-
-  // Navigation tab
   const [activeTab, setActiveTab] = useState<"classes" | "vic" | "profile">("classes");
 
-  // Save registered users whenever changed
-  useEffect(() => {
-    localStorage.setItem("movefit_users", JSON.stringify(registeredUsers));
-  }, [registeredUsers]);
+  // Fetch das aulas sincronizadas com o backend SQLite
+  const fetchClassesFromBackend = useCallback(async () => {
+    try {
+      const res = await fetch("/api/classes");
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setGymClasses(data);
+        }
+      }
+    } catch (error) {
+      // Caso a API não responda, mantém o estado das aulas sem quebrar o App
+    }
+  }, []);
 
-  // Save recommendations whenever changed
+  // 1. Polling contínuo das aulas para manter as vagas em tempo real
   useEffect(() => {
-    localStorage.setItem("movefit_saved_recommendations", JSON.stringify(savedRecommendations));
-  }, [savedRecommendations]);
+    fetchClassesFromBackend();
+    const interval = setInterval(() => {
+      fetchClassesFromBackend();
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [fetchClassesFromBackend]);
 
-  // Save active user whenever changed
+  // 2. Buscar usuários cadastrados no banco SQLite ao iniciar a aplicação
+  useEffect(() => {
+    fetch("/api/users")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setRegisteredUsers(data);
+        }
+      })
+      .catch((err) => console.error("Erro ao carregar usuários do SQLite:", err));
+  }, []);
+
+  // 3. Carregar os agendamentos do usuário ativo diretamente do SQLite
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem("movefit_active_user", JSON.stringify(currentUser));
-      // Load user's bookings
-      try {
-        const savedBookings = localStorage.getItem(`movefit_bookings_${currentUser.id}`);
-        if (savedBookings) {
-          setBookedClasses(JSON.parse(savedBookings));
-        } else {
-          // Pre-populate demo booking for Pilates if demo user
-          if (currentUser.id === DEFAULT_DEMO_USER.id) {
-            const initialDemoBooking: BookedClass = {
-              bookingId: "book-demo-1",
-              classId: "pilates",
-              className: "Pilates",
-              days: "Seg / Qua / Sex",
-              time: "10:00",
-              schedule: "Seg / Qua / Sex • 10:00",
-              duration: "50 minutos",
-              iconName: "Activity",
-              bookedAt: new Date().toISOString(),
-            };
-            setBookedClasses([initialDemoBooking]);
-          } else {
-            setBookedClasses([]);
+      fetch(`/api/classes/user/${currentUser.id}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (Array.isArray(data)) {
+            setBookedClasses(data);
           }
-        }
-      } catch (e) {
-        console.error(e);
-      }
+        })
+        .catch((err) => console.error("Erro ao carregar agendamentos do SQLite:", err));
     } else {
-      localStorage.removeItem("movefit_active_user");
       setBookedClasses([]);
     }
   }, [currentUser]);
 
-  // Save bookings whenever changed
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem(`movefit_bookings_${currentUser.id}`, JSON.stringify(bookedClasses));
-    }
-  }, [bookedClasses, currentUser]);
-
-  // Save gym classes whenever updated
-  useEffect(() => {
-    localStorage.setItem("movefit_classes", JSON.stringify(gymClasses));
-  }, [gymClasses]);
-
-  // Auth actions
   const handleLogin = (user: User) => {
     setCurrentUser(user);
   };
@@ -197,12 +109,40 @@ export default function App() {
     setActiveTab("classes");
   };
 
-  const handleRegisterUser = (newUser: User) => {
-    setRegisteredUsers((prev) => [...prev, newUser]);
+  const handleRegisterUser = async (newUser: User) => {
+    try {
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fullName: newUser.fullName,
+          email: newUser.email,
+          password: newUser.password,
+          matricula: newUser.matricula,
+          trainingLevel: newUser.trainingLevel,
+          medicalNotes: newUser.medicalNotes,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // Adiciona o novo usuário retornado pelo SQLite (com id e username .fit criados)
+        setRegisteredUsers((prev) => [...prev, data]);
+        // Seta o usuário recém-criado como usuário ativo para já entrar logado
+        setCurrentUser(data);
+      } else {
+        alert(data.error || "Erro ao realizar cadastro no servidor.");
+      }
+    } catch (error) {
+      console.error("Erro ao enviar cadastro para o SQLite:", error);
+      alert("Não foi possível conectar ao servidor para salvar o cadastro.");
+    }
   };
 
-  // Booking Logic: Users can book a class (spots decrease upon booking).
-  // They cannot book the same class twice or book a full class.
+  // Agendamento sincronizado com backend SQLite + estado local
   const handleBookClass = (classId: string, time: string): { success: boolean; message: string } => {
     if (!currentUser) return { success: false, message: "É necessário estar autenticado." };
 
@@ -212,63 +152,44 @@ export default function App() {
         (classId === "funcional" && c.id === "treino-funcional") ||
         (classId === "treino-funcional" && c.id === "funcional")
     );
-    if (!targetClass) {
-      return { success: false, message: "Aula não encontrada." };
-    }
 
-    const targetSlot = targetClass.slots.find((s) => s.time === time);
-    if (!targetSlot) {
-      return { success: false, message: "Horário não encontrado para esta aula." };
-    }
+    if (!targetClass) return { success: false, message: "Aula não encontrada." };
 
-    // 1. Check if user already booked this class
     const alreadyBooked = bookedClasses.some(
       (b) =>
-        b.classId === targetClass.id ||
-        (targetClass.id === "funcional" && b.classId === "treino-funcional") ||
-        (targetClass.id === "treino-funcional" && b.classId === "funcional")
+        (b.classId === targetClass.id ||
+          (targetClass.id === "funcional" && b.classId === "treino-funcional") ||
+          (targetClass.id === "treino-funcional" && b.classId === "funcional")) &&
+        b.time === time
     );
+
     if (alreadyBooked) {
       return {
         success: false,
-        message: `Você já está inscrito(a) em ${targetClass.name}. Cancele a vaga atual se quiser alterar o horário.`,
+        message: `Você já está inscrito(a) na aula de ${targetClass.name} neste horário!`,
       };
     }
 
-    // 2. Check if spots are full
-    const availableSpots = targetSlot.totalSpots - targetSlot.bookedSpots;
-    if (availableSpots <= 0) {
-      return {
-        success: false,
-        message: `A turma de ${targetClass.name} das ${time} está com vagas esgotadas!`,
-      };
-    }
+    // Regista no servidor SQLite
+    fetch("/api/classes/book", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: currentUser.id,
+        classId: targetClass.id,
+        time,
+      }),
+    })
+      .then(() => fetchClassesFromBackend())
+      .catch((err) => console.error("Erro ao sincronizar com backend:", err));
 
-    // 3. Decrement available spots (increment bookedSpots)
-    setGymClasses((prev) =>
-      prev.map((cls) => {
-        if (cls.id !== targetClass.id) return cls;
-        return {
-          ...cls,
-          slots: cls.slots.map((slot) => {
-            if (slot.time !== time) return slot;
-            return {
-              ...slot,
-              bookedSpots: slot.bookedSpots + 1,
-            };
-          }),
-        };
-      })
-    );
-
-    // 4. Create new booking record
     const newBooking: BookedClass = {
       bookingId: `book-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       classId: targetClass.id,
       className: targetClass.name,
       days: targetClass.days,
-      time: targetSlot.time,
-      schedule: `${targetClass.days} • ${targetSlot.time}`,
+      time,
+      schedule: `${targetClass.days} • ${time}`,
       duration: "50 minutos",
       iconName: targetClass.iconName,
       bookedAt: new Date().toISOString(),
@@ -278,91 +199,55 @@ export default function App() {
 
     return {
       success: true,
-      message: `Vaga confirmada para ${targetClass.name} (${targetSlot.time})! Duração: 50 minutos.`,
+      message: `Vaga confirmada para ${targetClass.name} (${time})! Duração: 50 minutos.`,
     };
   };
 
-  // Cancel / Remove booked slot mechanism
+  // Cancelamento sincronizado com backend SQLite + estado local
   const handleCancelBooking = (bookingId: string) => {
     const booking = bookedClasses.find((b) => b.bookingId === bookingId);
-    if (!booking) return;
+    if (!booking || !currentUser) return;
 
-    // Restore spot in gymClasses
-    setGymClasses((prev) =>
-      prev.map((cls) => {
-        if (
-          cls.id !== booking.classId &&
-          !(booking.classId === "funcional" && cls.id === "treino-funcional") &&
-          !(booking.classId === "treino-funcional" && cls.id === "funcional")
-        )
-          return cls;
-        return {
-          ...cls,
-          slots: cls.slots.map((slot) => {
-            if (slot.time !== booking.time) return slot;
-            return {
-              ...slot,
-              bookedSpots: Math.max(0, slot.bookedSpots - 1),
-            };
-          }),
-        };
-      })
-    );
+    fetch("/api/classes/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: currentUser.id,
+        classId: booking.classId,
+        time: booking.time,
+      }),
+    })
+      .then(() => fetchClassesFromBackend())
+      .catch((err) => console.error("Erro ao cancelar no backend:", err));
 
-    // Remove from user's booked classes
     setBookedClasses((prev) => prev.filter((b) => b.bookingId !== bookingId));
   };
 
-  // Filter recommendations for current user
-  const userSavedRecommendations = savedRecommendations.filter(
-    (r) => r.userId === currentUser?.id
-  );
+  const userSavedRecommendations = savedRecommendations.filter((r) => r.userId === currentUser?.id);
 
-  // Handler to save new recommendation from Vic
-  const handleSaveRecommendation = (
-    recData: Omit<SavedRecommendation, "id" | "savedAt" | "userId">
-  ) => {
+  const handleSaveRecommendation = (recData: Omit<SavedRecommendation, "id" | "savedAt" | "userId">) => {
     if (!currentUser) return;
     const newRec: SavedRecommendation = {
       ...recData,
-      id: `rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: `rec-${Date.now()}`,
       userId: currentUser.id,
-      savedAt: new Date().toLocaleString("pt-BR", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
+      savedAt: new Date().toLocaleString("pt-BR"),
     };
     setSavedRecommendations((prev) => [newRec, ...prev]);
   };
 
-  // Handler to remove saved recommendation
   const handleRemoveRecommendation = (recId: string) => {
     setSavedRecommendations((prev) => prev.filter((r) => r.id !== recId));
   };
 
-  // Handler to update user information (name, email, level, notes, password)
   const handleUpdateUser = (updatedData: Partial<User>): { success: boolean; message: string } => {
     if (!currentUser) return { success: false, message: "Nenhum usuário logado." };
-
-    const updatedUser: User = {
-      ...currentUser,
-      ...updatedData,
-    };
-
+    const updatedUser: User = { ...currentUser, ...updatedData };
     setCurrentUser(updatedUser);
-
-    setRegisteredUsers((prev) =>
-      prev.map((u) => (u.id === updatedUser.id ? updatedUser : u))
-    );
-
-    localStorage.setItem("movefit_active_user", JSON.stringify(updatedUser));
+    setRegisteredUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
     return { success: true, message: "Perfil atualizado com sucesso!" };
   };
 
-  // Render view
   if (!currentUser) {
     return (
       <AuthView
@@ -392,6 +277,7 @@ export default function App() {
             onBookClass={handleBookClass}
             onCancelBooking={handleCancelBooking}
             onNavigateToVic={() => setActiveTab("vic")}
+            onRefreshClasses={fetchClassesFromBackend}
           />
         ) : activeTab === "vic" ? (
           <VicChatTab
@@ -420,10 +306,9 @@ export default function App() {
         )}
       </main>
 
-      {/* Footer */}
       <footer className="border-t border-[#3E374C] py-6 text-center text-xs text-[#B0A8B9] bg-[#1E1B24]">
         <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p>© {new Date().getFullYear()} MoveFIT. Todos os direitos reservados. Treinos que transformam.</p>
+          <p>© {new Date().getFullYear()} MoveFIT. Todos os direitos reservados.</p>
           <div className="flex items-center gap-4 text-[11px]">
             <span>Aulas coletivas: 50 min</span>
             <span>•</span>

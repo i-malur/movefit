@@ -13,16 +13,23 @@ import {
   Check,
   Building2,
   Info,
+  ArrowRight,
+  Scale,
+  Ruler,
 } from "lucide-react";
 import { User, TrainingLevel } from "../types";
 
 interface AuthViewProps {
   onLogin: (user: User) => void;
-  registeredUsers: User[];
-  onRegisterUser: (user: User) => void;
+  registeredUsers?: User[];
+  onRegisterUser?: (user: User) => void;
 }
 
-export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, onRegisterUser }) => {
+export const AuthView: React.FC<AuthViewProps> = ({
+  onLogin,
+  registeredUsers = [],
+  onRegisterUser,
+}) => {
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
 
   // Login form state
@@ -38,11 +45,16 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
   const [regUsername, setRegUsername] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [regLevel, setRegLevel] = useState<TrainingLevel>("Iniciante");
+  const [regWeight, setRegWeight] = useState("");
+  const [regHeight, setRegHeight] = useState("");
   const [regMedicalNotes, setRegMedicalNotes] = useState("Nenhuma");
   const [regMatricula, setRegMatricula] = useState("");
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [regErrors, setRegErrors] = useState<string[]>([]);
-  const [regSuccess, setRegSuccess] = useState<string | null>(null);
+
+  // Modal State
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [createdUserModalData, setCreatedUserModalData] = useState<any | null>(null);
 
   // Real-time password requirement flags
   const passLength = regPassword.length >= 8;
@@ -52,151 +64,233 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
   const passSpecial = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/.test(regPassword);
   const isPasswordValid = passLength && passUpper && passLower && passNumber && passSpecial;
 
-  // Quick helper to fill demo test credentials
+  // Limpa todos os campos do cadastro
+  const resetRegisterForm = () => {
+    setRegFullName("");
+    setRegEmail("");
+    setRegUsername("");
+    setRegPassword("");
+    setRegLevel("Iniciante");
+    setRegWeight("");
+    setRegHeight("");
+    setRegMedicalNotes("Nenhuma");
+    setRegMatricula("");
+    setRegErrors([]);
+  };
+
+  // Formatador do username corporativo
+  const generateFitUsername = (fullName: string): string => {
+    const cleanName = fullName
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+
+    return cleanName ? `${cleanName}.fit` : "";
+  };
+
+  const handleFullNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setRegFullName(val);
+    setRegUsername(generateFitUsername(val));
+  };
+
   const handleFillDemo = () => {
     setLoginUsername("marialuiza.fit");
     setLoginPassword("Movefit@2026");
     setLoginError(null);
   };
 
-  // Login handler
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  // Handler de Login
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
 
     const trimmedUser = loginUsername.trim();
     const trimmedPass = loginPassword;
 
-    // Check mandatory fields
     if (!trimmedUser || !trimmedPass) {
       setLoginError("Usuário/Matrícula e Senha são campos obrigatórios.");
-      // AUTOMATICALLY CLEAR both fields as required
       setLoginUsername("");
       setLoginPassword("");
       loginUsernameRef.current?.focus();
       return;
     }
 
-    // Authenticate against registered users list (by username OR matricula)
-    const foundUser = registeredUsers.find(
-      (u) =>
-        (u.username.toLowerCase() === trimmedUser.toLowerCase() ||
-          u.matricula?.toLowerCase() === trimmedUser.toLowerCase()) &&
-        u.password === trimmedPass
-    );
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier: trimmedUser, password: trimmedPass }),
+      });
 
-    if (foundUser) {
-      onLogin(foundUser);
-    } else {
-      setLoginError("Credenciais inválidas. Usuário/matrícula ou senha incorretos.");
-      // AUTOMATICALLY CLEAR both input fields so user can re-type immediately
-      setLoginUsername("");
-      setLoginPassword("");
-      loginUsernameRef.current?.focus();
+      const data = await res.json();
+
+      if (res.ok && data.user) {
+        onLogin(data.user);
+      } else {
+        const foundUser = registeredUsers.find(
+          (u) =>
+            (u.username?.toLowerCase() === trimmedUser.toLowerCase() ||
+              u.matricula?.toLowerCase() === trimmedUser.toLowerCase()) &&
+            u.password === trimmedPass
+        );
+
+        if (foundUser) {
+          onLogin(foundUser);
+        } else {
+          setLoginError(data.error || "Credenciais inválidas. Usuário/matrícula ou senha incorretos.");
+          setLoginUsername("");
+          setLoginPassword("");
+          loginUsernameRef.current?.focus();
+        }
+      }
+    } catch (err) {
+      const foundUser = registeredUsers.find(
+        (u) =>
+          (u.username?.toLowerCase() === trimmedUser.toLowerCase() ||
+            u.matricula?.toLowerCase() === trimmedUser.toLowerCase()) &&
+          u.password === trimmedPass
+      );
+
+      if (foundUser) {
+        onLogin(foundUser);
+      } else {
+        setLoginError("Credenciais inválidas. Usuário/matrícula ou senha incorretos.");
+        setLoginUsername("");
+        setLoginPassword("");
+        loginUsernameRef.current?.focus();
+      }
     }
   };
 
-  // Register handler with accumulative validation
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  // Handler de Cadastro
+ const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setRegErrors([]);
-    setRegSuccess(null);
 
     const errors: string[] = [];
 
-    // 1. Nome Completo *: Minimum 5 characters, must contain at least two words
+    // 1. Validação do Nome Completo
     const trimmedFullName = regFullName.trim();
     const words = trimmedFullName.split(/\s+/).filter(Boolean);
     if (trimmedFullName.length < 5 || words.length < 2) {
       errors.push("Nome Completo: informe ao menos dois nomes (nome e sobrenome, mín. 5 caracteres).");
     }
 
-    // 2. E-mail *: Must strictly match standard email pattern
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const trimmedEmail = regEmail.trim();
+    // 2. Validação do E-mail (Normalizado e sem maiúsculas/espaços ocultos)
+    const trimmedEmail = regEmail.trim().toLowerCase();
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     if (!trimmedEmail || !emailRegex.test(trimmedEmail)) {
       errors.push("E-mail: formato inválido (exemplo: usuario@email.com).");
     }
 
-    // 3. Usuário *: Letters, numbers, dots, hyphens, or underscores only.
-    const usernameRegex = /^[a-zA-Z0-9._-]+$/;
-    const trimmedUsername = regUsername.trim();
-    if (!trimmedUsername || !usernameRegex.test(trimmedUsername) || trimmedUsername.length < 3) {
-      errors.push("Usuário: mínimo 3 caracteres (apenas letras, números, pontos, hífens ou sublinhados).");
-    } else {
-      const usernameExists = registeredUsers.some(
-        (u) => u.username.toLowerCase() === trimmedUsername.toLowerCase()
-      );
-      if (usernameExists) {
-        errors.push("Usuário: este nome já está em uso.");
-      }
-    }
-
-    // 4. Senha *: Strict validation
+    // 3. Validação da Senha
     if (!isPasswordValid) {
-      errors.push("Senha: deve atender a todos os 5 requisitos (8+ caracteres, maiúscula, minúscula, número e símbolo especial).");
+      errors.push("Senha: deve atender a todos os 5 requisitos de segurança.");
     }
 
-    // 5. Nível de Treino *: Must be one of the 3
-    if (!["Iniciante", "Intermediário", "Avançado"].includes(regLevel)) {
-      errors.push("Nível de Treino: selecione uma opção válida.");
+    // 4. Validação da Matrícula (Remove hífen ou espaços acidentais para comparar limpo)
+    const rawMatricula = regMatricula.trim().toUpperCase().replace(/\s+/g, "");
+    const matriculaRegex = /^MF-202[0-9]-[0-9]{3}$/i;
+
+    if (!rawMatricula) {
+      errors.push("Número de Matrícula: campo obrigatório.");
+    } else if (!matriculaRegex.test(rawMatricula)) {
+      errors.push("Número de Matrícula: formato inválido (ex: MF-2026-001).");
     }
 
-    // 6. Matrícula *: Campo ESTRITAMENTE OBRIGATÓRIO! Estrutura exclusiva: MF-202X-00X (MF, ano de cadastro e número de cadastro)
-    const trimmedMatricula = regMatricula.trim().toUpperCase();
-    const matriculaRegex = /^MF-202[0-9X]-[0-9X]{3}$/i;
-
-    if (!trimmedMatricula) {
-      errors.push(
-        "Número de Matrícula: campo obrigatório. Se você ainda não possui matrícula, deve procurar a MoveFIT presencialmente na academia para se matricular."
-      );
-    } else if (!matriculaRegex.test(trimmedMatricula)) {
-      errors.push(
-        "Número de Matrícula: formato inválido. Deve seguir estritamente a estrutura MF-202X-00X (ex: MF-2026-001, com MF, ano de cadastro e número de cadastro)."
-      );
-    } else {
-      const matriculaExists = registeredUsers.some(
-        (u) => u.matricula?.toUpperCase() === trimmedMatricula
-      );
-      if (matriculaExists) {
-        errors.push("Número de Matrícula: este número de matrícula já está cadastrado no sistema.");
-      }
-    }
-
-    // Accumulative errors
     if (errors.length > 0) {
       setRegErrors(errors);
       return;
     }
 
-    const newUser: User = {
-      id: "user-" + Date.now(),
+    // Payload pronto para o backend SQLite
+    const newUserPayload = {
       fullName: trimmedFullName,
       email: trimmedEmail,
-      username: trimmedUsername,
       password: regPassword,
       trainingLevel: regLevel,
+      weight: regWeight ? parseFloat(regWeight.replace(',', '.')) : null,
+      height: regHeight ? parseFloat(regHeight.replace(',', '.')) : null,
       medicalNotes: regMedicalNotes.trim() || "Nenhuma",
-      matricula: trimmedMatricula,
-      createdAt: new Date().toISOString(),
+      matricula: rawMatricula,
     };
 
-    onRegisterUser(newUser);
-    setRegSuccess(`Cadastro realizado com sucesso para ${newUser.fullName}! Matrícula: ${trimmedMatricula}.`);
-    
-    // Switch to login tab and prefill username
-    setTimeout(() => {
-      setActiveTab("login");
-      setLoginUsername(newUser.username);
-      setLoginPassword("");
-      setRegSuccess(null);
-      setRegErrors([]);
-      setLoginError(null);
-    }, 1800);
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newUserPayload),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setCreatedUserModalData(data);
+        setShowSuccessModal(true);
+        resetRegisterForm();
+      } else {
+        setRegErrors([data.error || "Erro ao realizar o cadastro no servidor."]);
+      }
+    } catch (err) {
+      setRegErrors(["Não foi possível conectar ao servidor para salvar o cadastro."]);
+    }
+  };
+  
+  const handleCloseModalAndGoToLogin = () => {
+    setShowSuccessModal(false);
+    if (createdUserModalData?.username) {
+      setLoginUsername(createdUserModalData.username);
+    }
+    setCreatedUserModalData(null);
+    setActiveTab("login");
   };
 
   return (
-    <div className="min-h-screen flex flex-col justify-center items-center px-4 py-8 sm:py-12 bg-[#1E1B24]">
+    <div className="min-h-screen flex flex-col justify-center items-center px-4 py-8 sm:py-12 bg-[#1E1B24] relative">
+      {/* ================= POP-UP MODAL DE SUCESSO ================= */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-[#292433] border border-[#00C0A3]/40 rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center space-y-4">
+            <div className="w-16 h-16 bg-[#00C0A3]/20 border border-[#00C0A3]/40 text-[#00C0A3] rounded-2xl flex items-center justify-center mx-auto">
+              <CheckCircle2 className="w-10 h-10" />
+            </div>
+
+            <div>
+              <h3 className="text-2xl font-bold text-white">Cadastro Realizado!</h3>
+              <p className="text-zinc-300 text-xs sm:text-sm mt-1">
+                Sua conta foi criada com sucesso na base de dados do MoveFIT.
+              </p>
+            </div>
+
+            {createdUserModalData && (
+              <div className="bg-[#1E1B24] border border-[#3E374C] rounded-xl p-4 text-left space-y-2 text-xs sm:text-sm">
+                <div className="flex justify-between items-center border-b border-[#3E374C] pb-2">
+                  <span className="text-[#B0A8B9]">Nome:</span>
+                  <span className="text-white font-medium">{createdUserModalData.fullName}</span>
+                </div>
+                <div className="flex justify-between items-center border-b border-[#3E374C] pb-2">
+                  <span className="text-[#B0A8B9]">Usuário Corporativo:</span>
+                  <span className="text-[#00C0A3] font-mono font-bold">{createdUserModalData.username}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-[#B0A8B9]">Matrícula:</span>
+                  <span className="text-white font-medium">{createdUserModalData.matricula}</span>
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={handleCloseModalAndGoToLogin}
+              className="w-full h-11 bg-[#00C0A3] hover:bg-[#00a88f] text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2 text-sm cursor-pointer shadow-lg"
+            >
+              Ir para o Login <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Brand Header */}
       <div className="text-center mb-6 max-w-lg">
         <div className="inline-flex items-center justify-center gap-3 mb-2">
@@ -223,7 +317,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
         }`}
       >
         <div className="bg-[#292433] border border-[#3E374C] rounded-2xl p-6 sm:p-8 shadow-xl relative">
-          {/* Subtle Top Accent */}
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#845EC2] via-[#00C0A3] to-[#845EC2] rounded-t-2xl"></div>
 
           {/* Clean Tab Switcher */}
@@ -278,14 +371,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
                 </div>
               )}
 
-              {regSuccess && (
-                <div className="bg-[#00C0A3]/10 border border-[#00C0A3]/40 rounded-xl p-3.5 text-xs sm:text-sm text-[#00C0A3] flex items-center gap-2.5">
-                  <CheckCircle2 className="w-4 h-4 text-[#00C0A3] shrink-0" />
-                  <span>{regSuccess}</span>
-                </div>
-              )}
-
-              {/* Informative Note for new students on login */}
               <div className="bg-[#1E1B24] border border-[#3E374C] rounded-xl p-3 text-xs text-zinc-300 flex items-start gap-2.5">
                 <Building2 className="w-4 h-4 text-[#00C0A3] shrink-0 mt-0.5" />
                 <p className="leading-relaxed">
@@ -358,7 +443,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
           {/* ==================== REGISTRATION FORM ==================== */}
           {activeTab === "register" && (
             <form onSubmit={handleRegisterSubmit} className="space-y-4">
-              {/* AVISO IMPORTANTE: MATRÍCULA PRESENCIAL OBRIGATÓRIA */}
               <div
                 id="aviso-matricula-presencial"
                 className="bg-amber-500/10 border border-amber-500/35 rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm text-amber-200/95 flex items-start gap-3 shadow-inner"
@@ -374,12 +458,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
                     </span>
                   </div>
                   <p className="text-zinc-200 leading-relaxed text-xs">
-                    O <strong>número de matrícula é obrigatório</strong> e deve seguir exclusivamente a estrutura <strong>MF-202X-00X</strong> (onde <strong>MF</strong> é a sigla da academia, <strong>202X</strong> é o ano de cadastro e <strong>00X</strong> é o número de cadastro, ex: <code>MF-2026-001</code>). Se você ainda não possui matrícula ativa, <strong>procure a MoveFIT presencialmente na academia</strong> para se matricular na recepção física.
+                    O <strong>número de matrícula é obrigatório</strong> e deve seguir exclusivamente a estrutura <strong>MF-202X-00X</strong>. Se você ainda não possui matrícula ativa, <strong>procure a MoveFIT presencialmente na academia</strong> para se matricular na recepção física.
                   </p>
                 </div>
               </div>
 
-              {/* Accumulative Error Banner */}
               {regErrors.length > 0 && (
                 <div
                   id="registration-errors-banner"
@@ -397,7 +480,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
                 </div>
               )}
 
-              {/* Clean 2-column grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 {/* 1. Nome Completo */}
                 <div>
@@ -408,7 +490,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
                     id="reg-fullname"
                     type="text"
                     value={regFullName}
-                    onChange={(e) => setRegFullName(e.target.value)}
+                    onChange={handleFullNameChange}
                     placeholder="Seu nome e sobrenome"
                     className="w-full h-10 px-3 bg-[#1E1B24] border border-[#3E374C] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] text-sm"
                   />
@@ -429,25 +511,25 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
                   />
                 </div>
 
-                {/* 3. Usuário */}
+                {/* 3. Usuário Corporativo (.fit) - Gerado Automaticamente */}
                 <div>
                   <label htmlFor="reg-username" className="block text-xs font-medium text-zinc-300 mb-1">
-                    Usuário <span className="text-red-400">*</span>
+                    Usuário Movefit <span className="text-red-400">*</span>
                   </label>
                   <input
                     id="reg-username"
                     type="text"
+                    readOnly
                     value={regUsername}
-                    onChange={(e) => setRegUsername(e.target.value)}
-                    placeholder="ex: maria.fit"
-                    className="w-full h-10 px-3 bg-[#1E1B24] border border-[#3E374C] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] text-sm"
+                    placeholder="Gerado automaticamente (.fit)"
+                    className="w-full h-10 px-3 bg-[#17141D] border border-[#3E374C] rounded-lg text-[#00C0A3] font-mono font-semibold placeholder-zinc-600 focus:outline-none cursor-not-allowed text-sm"
                   />
                 </div>
 
-                {/* 4. Nível de Treino */}
+                {/* 4. Nível do Usuário */}
                 <div>
                   <label htmlFor="reg-level" className="block text-xs font-medium text-zinc-300 mb-1">
-                    Nível de Treino <span className="text-red-400">*</span>
+                    Nível do Usuário <span className="text-red-400">*</span>
                   </label>
                   <select
                     id="reg-level"
@@ -456,12 +538,42 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
                     className="w-full h-10 px-3 bg-[#1E1B24] border border-[#3E374C] rounded-lg text-white focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] text-sm cursor-pointer"
                   >
                     <option value="Iniciante">Iniciante</option>
-                    <option value="Intermediário">Intermediário</option>
+                    <option value="Moderado">Moderado</option>
                     <option value="Avançado">Avançado</option>
                   </select>
                 </div>
 
-                {/* 5. Senha com checklist dinâmico em tempo real (Ocupa as 2 colunas) */}
+                {/* 5. Peso (kg) e Altura (cm) */}
+                <div>
+                  <label htmlFor="reg-weight" className="block text-xs font-medium text-zinc-300 mb-1">
+                    Peso (kg)
+                  </label>
+                  <input
+                    id="reg-weight"
+                    type="number"
+                    step="0.1"
+                    value={regWeight}
+                    onChange={(e) => setRegWeight(e.target.value)}
+                    placeholder="Ex: 65.5"
+                    className="w-full h-10 px-3 bg-[#1E1B24] border border-[#3E374C] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="reg-height" className="block text-xs font-medium text-zinc-300 mb-1">
+                    Altura (cm)
+                  </label>
+                  <input
+                    id="reg-height"
+                    type="number"
+                    value={regHeight}
+                    onChange={(e) => setRegHeight(e.target.value)}
+                    placeholder="Ex: 170"
+                    className="w-full h-10 px-3 bg-[#1E1B24] border border-[#3E374C] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] text-sm"
+                  />
+                </div>
+
+                {/* 6. Senha */}
                 <div className="sm:col-span-2">
                   <div className="flex items-center justify-between mb-1">
                     <label htmlFor="reg-password" className="block text-xs font-medium text-zinc-300">
@@ -497,7 +609,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
                     </button>
                   </div>
 
-                  {/* Parâmetros da senha em tempo real */}
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     <span
                       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] border transition-colors ${
@@ -547,12 +658,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
                       }`}
                     >
                       <Check className={`w-3 h-3 ${passSpecial ? "text-[#00C0A3]" : "text-zinc-600"}`} />
-                      1 caractere especial (!@#$...)
+                      1 caractere especial (!@#\$...)
                     </span>
                   </div>
                 </div>
 
-                {/* 6. Matrícula - OBRIGATÓRIO (Estrutura MF-202X-00X) */}
+                {/* 7. Matrícula */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label htmlFor="reg-matricula" className="block text-xs font-semibold text-zinc-300">
@@ -576,15 +687,15 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLogin, registeredUsers, on
                   <p className="text-[11px] text-amber-300/90 mt-1 flex items-start gap-1">
                     <Info className="w-3 h-3 text-amber-400 shrink-0 mt-0.5" />
                     <span>
-                      Estrutura: <strong>MF-202X-00X</strong> (MF, ano e número de cadastro). Se não possuir, procure a MoveFIT presencialmente.
+                      Estrutura: <strong>MF-202X-00X</strong>. Se não possuir, procure a MoveFIT presencialmente.
                     </span>
                   </p>
                 </div>
 
-                {/* 7. Observação Médica */}
+                {/* 8. Restrição / Observação Médica */}
                 <div>
                   <label htmlFor="reg-medical" className="block text-xs font-medium text-zinc-300 mb-1">
-                    Observação Médica <span className="text-red-400">*</span>
+                    Restrição Médica <span className="text-red-400">*</span>
                   </label>
                   <input
                     id="reg-medical"

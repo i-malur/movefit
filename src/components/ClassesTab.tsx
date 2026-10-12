@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { GymClass, BookedClass } from "../types";
 import {
   Activity,
@@ -12,10 +12,9 @@ import {
   AlertCircle,
   Trash2,
   Plus,
-  Sparkles,
   Info,
   CalendarDays,
-  LayoutGrid
+  LayoutGrid,
 } from "lucide-react";
 
 interface ClassesTabProps {
@@ -24,9 +23,9 @@ interface ClassesTabProps {
   onBookClass: (classId: string, time: string) => { success: boolean; message: string };
   onCancelBooking: (bookingId: string) => void;
   onNavigateToVic: () => void;
+  onRefreshClasses?: () => void;
 }
 
-// Calculate slot end time (+50 min)
 export const getSlotEndTime = (startTime: string): string => {
   const [h, m] = startTime.split(":").map(Number);
   const totalMin = h * 60 + m + 50;
@@ -45,7 +44,12 @@ interface ScheduleItem {
   iconName: "Activity" | "Bike" | "Music" | "Dumbbell";
 }
 
-const WEEKDAYS_SCHEDULE: { dayKey: "Seg" | "Ter" | "Qua" | "Qui" | "Sex"; dayName: string; daySubtitle: string; items: ScheduleItem[] }[] = [
+const WEEKDAYS_SCHEDULE: {
+  dayKey: "Seg" | "Ter" | "Qua" | "Qui" | "Sex";
+  dayName: string;
+  daySubtitle: string;
+  items: ScheduleItem[];
+}[] = [
   {
     dayKey: "Seg",
     dayName: "Segunda-feira",
@@ -114,19 +118,27 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
   onBookClass,
   onCancelBooking,
   onNavigateToVic,
+  onRefreshClasses,
 }) => {
-  // Dropdown selector state
   const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || "");
   const [selectedTime, setSelectedTime] = useState<string>("");
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  // View state: "schedule" (Grade Semanal por dia) vs "modalities" (Por modalidade)
   const [viewMode, setViewMode] = useState<"schedule" | "modalities">("schedule");
   const [selectedDayFilter, setSelectedDayFilter] = useState<"ALL" | "Seg" | "Ter" | "Qua" | "Qui" | "Sex">("ALL");
 
   const selectedClass = classes.find((c) => c.id === selectedClassId) || classes[0];
 
-  // Helper for rendering icons
+  useEffect(() => {
+    if (onRefreshClasses) {
+      onRefreshClasses();
+      const interval = setInterval(() => {
+        onRefreshClasses();
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [onRefreshClasses]);
+
   const renderClassIcon = (iconName: string, className = "w-5 h-5") => {
     switch (iconName) {
       case "Activity":
@@ -151,30 +163,40 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
     if (result.success) {
       setFeedback({ type: "success", message: result.message });
       setSelectedTime("");
+      if (onRefreshClasses) onRefreshClasses();
     } else {
       setFeedback({ type: "error", message: result.message });
     }
   };
 
-  // Helper to find slot status from live classes state
+// Função centralizada para calcular vagas reais globais do banco
   const getSlotAvailability = (classId: string, time: string) => {
-    const gymClass = classes.find(
-      (c) => c.id === classId || (classId === "funcional" && c.id === "treino-funcional")
-    );
-    if (!gymClass) return { remaining: 0, total: 15, isFull: false, isBooked: false };
+    const normId = classId.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-    const slot = gymClass.slots.find((s) => s.time === time);
-    const total = slot ? slot.totalSpots : 15;
-    const booked = slot ? slot.bookedSpots : 0;
-    const remaining = Math.max(0, total - booked);
-    const isFull = remaining <= 0;
-    const isBooked = bookedClasses.some(
-      (b) =>
-        (b.classId === classId || (classId === "funcional" && b.classId === "treino-funcional")) &&
-        b.time === time
-    );
+    // Encontra a aula no array que veio do backend (GET /api/classes)
+    const gymClass = classes.find((c) => {
+      const cNorm = c.id.toLowerCase().replace(/[^a-z0-9]/g, "");
+      return cNorm === normId || (normId === "funcional" && cNorm === "treinofuncional") || (normId === "treinofuncional" && cNorm === "funcional");
+    });
 
-    return { remaining, total, isFull, isBooked };
+    const slot = gymClass?.slots?.find((s: any) => s.time === time);
+    const total = slot?.totalSpots ?? 30;
+
+    // 1. Pega as vagas disponíveis que O BANCO SQLITE calculou (SELECT COUNT)
+    const remaining = slot?.availableSpots !== undefined ? slot.availableSpots : 30;
+
+    // 2. Verifica APENAS se a pessoa logada tem esta reserva (para pintar o botão de "Inscrito")
+    const isBooked = bookedClasses.some((b) => {
+      const bNorm = b.classId.toLowerCase().replace(/[^a-z0-9]/g, "");
+      return (bNorm === normId || (normId === "funcional" && bNorm === "treinofuncional") || (normId === "treinofuncional" && bNorm === "funcional")) && b.time === time;
+    });
+
+    return {
+      remaining: Math.max(0, remaining),
+      total,
+      isFull: remaining <= 0,
+      isBooked,
+    };
   };
 
   const filteredDays =
@@ -210,7 +232,7 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
         </div>
       )}
 
-      {/* Script Official Rules Banner */}
+      {/* Rules Banner */}
       <div className="bg-gradient-to-r from-[#845EC2]/15 via-[#1E1B24] to-[#00C0A3]/15 border border-[#845EC2]/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-start sm:items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-[#845EC2]/20 border border-[#845EC2]/40 flex items-center justify-center shrink-0 text-[#00C0A3]">
@@ -236,9 +258,9 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
           onClick={onNavigateToVic}
           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1E1B24] hover:bg-[#845EC2]/20 border border-[#00C0A3]/40 text-[#00C0A3] rounded-xl text-xs font-semibold transition-all cursor-pointer shrink-0 shadow"
         >
-          <div className="w-5 h-5 rounded-full overflow-hidden shrink-0 border border-[#00C0A3]/60">
+          <div className="w-9 h-9 rounded-full overflow-hidden shrink-0 border border-[#00C0A3]/60">
             <img
-              src="/foto_vic.jpeg"
+              src="/foto_vicIA.png"
               alt="Vic"
               className="w-full h-full object-cover object-[center_20%]"
               referrerPolicy="no-referrer"
@@ -248,7 +270,7 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
         </button>
       </div>
 
-      {/* SECTION 1: Interactive Class Booking (Dropdown & Form) */}
+      {/* SECTION 1: Interactive Class Booking */}
       <section className="bg-[#292433] border border-[#3E374C] rounded-2xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-6 pb-4 border-b border-[#3E374C]">
           <div>
@@ -271,7 +293,6 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
 
         {/* Dropdown Selection Form */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-          {/* Select Modalidade */}
           <div className="md:col-span-5">
             <label htmlFor="select-class" className="block text-xs font-semibold text-[#B0A8B9] uppercase tracking-wider mb-2">
               1. Selecionar Modalidade Oficial
@@ -295,7 +316,6 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
             </div>
           </div>
 
-          {/* Select Horário */}
           <div className="md:col-span-4">
             <label htmlFor="select-time-slot" className="block text-xs font-semibold text-[#B0A8B9] uppercase tracking-wider mb-2">
               2. Horário Disponível (Início e Término)
@@ -307,32 +327,24 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
               className="w-full px-4 py-3 bg-[#1E1B24] border border-[#3E374C] rounded-xl text-white text-sm focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] transition-all cursor-pointer font-medium"
             >
               <option value="">Selecione um horário...</option>
-              {selectedClass?.slots.map((slot) => {
-                const remaining = slot.totalSpots - slot.bookedSpots;
-                const isFull = remaining <= 0;
-                const isAlreadyBooked = bookedClasses.some(
-                  (b) =>
-                    (b.classId === selectedClass.id ||
-                      (selectedClass.id === "funcional" && b.classId === "treino-funcional")) &&
-                    b.time === slot.time
-                );
+              {selectedClass?.slots?.map((slot: any) => {
+                const avail = getSlotAvailability(selectedClass.id, slot.time);
                 const endTime = getSlotEndTime(slot.time);
 
                 return (
                   <option
                     key={slot.time}
                     value={slot.time}
-                    disabled={isFull || isAlreadyBooked}
+                    disabled={avail.isFull || avail.isBooked}
                     className="bg-[#1E1B24] text-white"
                   >
-                    {slot.time} às {endTime} (50 min) • {isAlreadyBooked ? "Já Inscrito" : isFull ? "Esgotado (0 vagas)" : `${remaining} vagas`}
+                    {slot.time} às {endTime} (50 min) • {avail.isBooked ? "Já Inscrito" : avail.isFull ? "Esgotado (0 vagas)" : `${avail.remaining} vagas`}
                   </option>
                 );
               })}
             </select>
           </div>
 
-          {/* Submit Button */}
           <div className="md:col-span-3">
             <button
               id="btn-confirm-booking"
@@ -351,7 +363,6 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
           </div>
         </div>
 
-        {/* Selected class info summary bar */}
         {selectedClass && (
           <div className="mt-4 p-3.5 bg-[#1E1B24] rounded-xl border border-[#3E374C] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-2.5">
@@ -401,9 +412,9 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
               onClick={onNavigateToVic}
               className="inline-flex items-center gap-2 px-4 py-2 bg-[#845EC2]/20 hover:bg-[#845EC2]/30 text-[#00C0A3] border border-[#845EC2]/40 rounded-xl text-xs font-semibold transition-all cursor-pointer"
             >
-              <div className="w-5 h-5 rounded-full overflow-hidden shrink-0 border border-[#00C0A3]/50">
+              <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-[#00C0A3]/50">
                 <img
-                  src="/foto_vic.jpeg"
+                  src="/foto_vicIA.png"
                   alt="Vic"
                   className="w-full h-full object-cover object-[center_20%]"
                   referrerPolicy="no-referrer"
@@ -424,7 +435,6 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3.5">
-                      {/* Sport Icon Card */}
                       <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-[#845EC2] to-[#00C0A3] p-[1.5px] shrink-0">
                         <div className="w-full h-full bg-[#1E1B24] rounded-[10px] flex items-center justify-center text-[#00C0A3]">
                           {renderClassIcon(item.iconName, "w-6 h-6 text-[#00C0A3]")}
@@ -437,10 +447,11 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
                         </h4>
                         <div className="flex items-center gap-2 mt-1 text-xs text-[#B0A8B9]">
                           <Calendar className="w-3.5 h-3.5 text-[#00C0A3]" />
-                          <span>{item.days} • <strong>{item.time} às {endTime}</strong></span>
+                          <span>
+                            {item.days} • <strong>{item.time} às {endTime}</strong>
+                          </span>
                         </div>
 
-                        {/* Required "50 minutos" duration tag */}
                         <div className="flex items-center gap-2 mt-2.5">
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#00C0A3]/15 text-[#00C0A3] border border-[#00C0A3]/30">
                             <Clock className="w-3 h-3" />
@@ -455,10 +466,12 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
                       </div>
                     </div>
 
-                    {/* Cancel / Remove slot mechanism */}
                     <button
                       id={`btn-cancel-booking-${item.bookingId}`}
-                      onClick={() => onCancelBooking(item.bookingId)}
+                      onClick={() => {
+                        onCancelBooking(item.bookingId);
+                        if (onRefreshClasses) onRefreshClasses();
+                      }}
                       title="Cancelar agendamento e liberar vaga"
                       className="p-2 rounded-xl bg-[#1E1B24] hover:bg-red-500/20 text-[#B0A8B9] hover:text-red-400 border border-[#3E374C] hover:border-red-500/30 transition-all cursor-pointer"
                     >
@@ -472,9 +485,8 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
         )}
       </section>
 
-      {/* SECTION 3: Grade Oficial de Horários (Weekly Schedule Timetable & Cards) */}
+      {/* SECTION 3: Grade Oficial de Horários */}
       <section className="space-y-4">
-        {/* Controls Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-[#3E374C]/60">
           <div>
             <div className="flex items-center gap-2">
@@ -488,14 +500,11 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
             </p>
           </div>
 
-          {/* View Mode Toggle */}
           <div className="flex items-center gap-1 bg-[#1E1B24] p-1 rounded-xl border border-[#3E374C] self-start sm:self-auto">
             <button
               onClick={() => setViewMode("schedule")}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                viewMode === "schedule"
-                  ? "bg-[#845EC2] text-white shadow"
-                  : "text-[#B0A8B9] hover:text-white"
+                viewMode === "schedule" ? "bg-[#845EC2] text-white shadow" : "text-[#B0A8B9] hover:text-white"
               }`}
             >
               <CalendarDays className="w-3.5 h-3.5" />
@@ -504,9 +513,7 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
             <button
               onClick={() => setViewMode("modalities")}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                viewMode === "modalities"
-                  ? "bg-[#845EC2] text-white shadow"
-                  : "text-[#B0A8B9] hover:text-white"
+                viewMode === "modalities" ? "bg-[#845EC2] text-white shadow" : "text-[#B0A8B9] hover:text-white"
               }`}
             >
               <LayoutGrid className="w-3.5 h-3.5" />
@@ -515,10 +522,9 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
           </div>
         </div>
 
-        {/* VIEW 1: Grade Semanal por Dia (Segunda a Sexta) */}
+        {/* VIEW 1: Grade Semanal por Dia */}
         {viewMode === "schedule" && (
           <div className="space-y-5">
-            {/* Day Filter Pills */}
             <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
               <button
                 onClick={() => setSelectedDayFilter("ALL")}
@@ -545,23 +551,19 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
               ))}
             </div>
 
-            {/* Days Grid / List */}
             <div className="space-y-6">
               {filteredDays.map((day) => (
                 <div
                   key={day.dayKey}
                   className="bg-[#292433] border border-[#3E374C] rounded-2xl p-5 shadow-lg relative overflow-hidden"
                 >
-                  {/* Day Header */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 mb-4 border-b border-[#3E374C]/80">
                     <div className="flex items-center gap-2.5">
                       <div className="w-8 h-8 rounded-lg bg-[#00C0A3]/15 border border-[#00C0A3]/30 flex items-center justify-center font-bold text-xs text-[#00C0A3]">
                         {day.dayKey}
                       </div>
                       <div>
-                        <h4 className="text-base font-bold text-white tracking-tight">
-                          {day.dayName}
-                        </h4>
+                        <h4 className="text-base font-bold text-white tracking-tight">{day.dayName}</h4>
                         <p className="text-xs text-[#B0A8B9]">{day.daySubtitle}</p>
                       </div>
                     </div>
@@ -571,14 +573,12 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
                     </span>
                   </div>
 
-                  {/* Timetable Items */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {day.items.map((item, idx) => {
                       const avail = getSlotAvailability(item.classId, item.startTime);
                       const isFitDance = item.classId === "fitdance";
                       const isSpinning = item.classId === "spinning";
                       const isPilates = item.classId === "pilates";
-                      const isFuncional = item.classId === "funcional";
 
                       const borderAccent = isFitDance
                         ? "hover:border-pink-500/40"
@@ -594,7 +594,6 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
                           className={`bg-[#1E1B24] border border-[#3E374C] ${borderAccent} rounded-xl p-3.5 flex flex-col justify-between transition-all duration-200 group`}
                         >
                           <div>
-                            {/* Time & Badge */}
                             <div className="flex items-center justify-between gap-2 mb-2">
                               <div className="flex items-center gap-1.5 text-xs font-bold text-white">
                                 <Clock className="w-3.5 h-3.5 text-[#00C0A3]" />
@@ -608,7 +607,6 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
                               </span>
                             </div>
 
-                            {/* Class Name & Room */}
                             <div className="flex items-start gap-2.5 mt-2">
                               <div className="w-8 h-8 rounded-lg bg-[#292433] border border-[#3E374C] flex items-center justify-center text-[#00C0A3] shrink-0">
                                 {renderClassIcon(item.iconName, "w-4 h-4")}
@@ -618,14 +616,11 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
                                   {item.className}
                                 </h5>
                                 <p className="text-[11px] text-[#B0A8B9]">{item.category}</p>
-                                <span className="text-[10px] text-zinc-400 block mt-0.5">
-                                  {item.room}
-                                </span>
+                                <span className="text-[10px] text-zinc-400 block mt-0.5">{item.room}</span>
                               </div>
                             </div>
                           </div>
 
-                          {/* Footer: Availability & Booking Button */}
                           <div className="mt-3.5 pt-2.5 border-t border-[#3E374C]/60 flex items-center justify-between gap-2">
                             <div className="text-[11px]">
                               <span className="text-[#B0A8B9]">Vagas: </span>
@@ -662,7 +657,7 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
           </div>
         )}
 
-        {/* VIEW 2: Visão por Modalidades (Cards) */}
+        {/* VIEW 2: Visão por Modalidades */}
         {viewMode === "modalities" && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {classes.map((gymClass) => (
@@ -671,7 +666,6 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
                 className="bg-[#292433] border border-[#3E374C] rounded-2xl p-4 flex flex-col justify-between shadow-lg hover:border-[#845EC2]/50 transition-all"
               >
                 <div>
-                  {/* Header */}
                   <div className="flex items-center justify-between mb-3">
                     <div className="w-10 h-10 rounded-xl bg-[#1E1B24] border border-[#3E374C] flex items-center justify-center text-[#00C0A3]">
                       {renderClassIcon(gymClass.iconName, "w-5 h-5")}
@@ -683,24 +677,14 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
 
                   <h4 className="text-base font-bold text-white">{gymClass.name}</h4>
                   <p className="text-xs text-[#00C0A3] font-medium mt-0.5">{gymClass.days}</p>
-                  <p className="text-[11px] text-[#B0A8B9] mt-2 line-clamp-2">
-                    {gymClass.description}
-                  </p>
+                  <p className="text-[11px] text-[#B0A8B9] mt-2 line-clamp-2">{gymClass.description}</p>
 
-                  {/* Slots List */}
                   <div className="mt-4 space-y-2">
                     <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block">
                       Horários (50 min) & Vagas:
                     </span>
-                    {gymClass.slots.map((slot) => {
-                      const remaining = slot.totalSpots - slot.bookedSpots;
-                      const isFull = remaining <= 0;
-                      const isBooked = bookedClasses.some(
-                        (b) =>
-                          (b.classId === gymClass.id ||
-                            (gymClass.id === "funcional" && b.classId === "treino-funcional")) &&
-                          b.time === slot.time
-                      );
+                    {gymClass.slots?.map((slot: any) => {
+                      const avail = getSlotAvailability(gymClass.id, slot.time);
                       const endTime = getSlotEndTime(slot.time);
 
                       return (
@@ -712,15 +696,15 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
                             <span className="font-bold text-white">{slot.time}</span>
                             <span className="text-[10px] text-zinc-500 ml-1">às {endTime}</span>
                             <span className="text-[10px] text-[#B0A8B9] ml-1.5 block sm:inline">
-                              ({remaining}/{slot.totalSpots} vagas)
+                              ({avail.remaining}/{avail.total} vagas)
                             </span>
                           </div>
 
-                          {isBooked ? (
+                          {avail.isBooked ? (
                             <span className="text-[10px] font-bold text-[#00C0A3] bg-[#00C0A3]/10 px-2 py-0.5 rounded-md border border-[#00C0A3]/30">
                               Inscrito
                             </span>
-                          ) : isFull ? (
+                          ) : avail.isFull ? (
                             <span className="text-[10px] font-bold text-red-400 bg-red-500/10 px-2 py-0.5 rounded-md border border-red-500/20">
                               Lotada
                             </span>

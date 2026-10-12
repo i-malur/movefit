@@ -144,6 +144,28 @@ export const UserHeader: React.FC<UserHeaderProps> = ({
 
         {/* Navigation Tabs */}
         <div className="flex items-center gap-2 mt-4 flex-wrap">
+
+          <button
+            id="tab-conversar-vic"
+            onClick={() => setActiveTab("vic")}
+            className={`flex-1 sm:flex-initial py-2 px-4 rounded-xl font-semibold text-xs sm:text-sm transition-all duration-200 flex items-center justify-center gap-2.5 cursor-pointer ${
+              activeTab === "vic"
+                ? "bg-gradient-to-r from-[#845EC2] to-[#00C0A3] text-white shadow-lg glow-turquoise border border-[#00C0A3]"
+                : "bg-[#292433] text-[#B0A8B9] hover:text-white border border-[#3E374C]"
+            }`}
+          >
+            <div className="relative w-10 h-10 rounded-full overflow-hidden border border-[#00C0A3]/60 shrink-0">
+              <img
+                src="/foto_vicIA.png"
+                alt="Vic"
+                className="w-full h-full object-cover object-[center_20%]"
+                referrerPolicy="no-referrer"
+              />
+              <span className="absolute bottom-0 right-0 w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
+            </div>
+              VIC
+          </button>
+          
           <button
             id="tab-minhas-aulas"
             onClick={() => setActiveTab("classes")}
@@ -162,26 +184,7 @@ export const UserHeader: React.FC<UserHeaderProps> = ({
             )}
           </button>
 
-          <button
-            id="tab-conversar-vic"
-            onClick={() => setActiveTab("vic")}
-            className={`flex-1 sm:flex-initial py-2 px-4 rounded-xl font-semibold text-xs sm:text-sm transition-all duration-200 flex items-center justify-center gap-2.5 cursor-pointer ${
-              activeTab === "vic"
-                ? "bg-gradient-to-r from-[#845EC2] to-[#00C0A3] text-white shadow-lg glow-turquoise border border-[#00C0A3]"
-                : "bg-[#292433] text-[#B0A8B9] hover:text-white border border-[#3E374C]"
-            }`}
-          >
-            <div className="relative w-6 h-6 rounded-full overflow-hidden border border-[#00C0A3]/60 shrink-0">
-              <img
-                src="/foto_vic.jpeg"
-                alt="Vic"
-                className="w-full h-full object-cover object-[center_20%]"
-                referrerPolicy="no-referrer"
-              />
-              <span className="absolute bottom-0 right-0 w-1.5 h-1.5 bg-emerald-400 rounded-full"></span>
-            </div>
-            Conversar com a Vic (IA)
-          </button>
+          
 
           <button
             id="tab-meu-perfil"

@@ -1,4 +1,4 @@
-export type TrainingLevel = "Iniciante" | "Intermediário" | "Avançado";
+export type TrainingLevel = "Iniciante" | "Moderado" | "Avançado";
 
 export type RecommendationCategory = "treino" | "aquecimento" | "exercicio" | "geral";
 
@@ -19,6 +19,8 @@ export interface User {
   username: string;
   password?: string;
   trainingLevel: TrainingLevel;
+  weight?: number;
+  height?: number;
   medicalNotes: string;
   matricula: string;
   createdAt: string;

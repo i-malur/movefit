@@ -499,9 +499,9 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                 : "bg-[#292433] text-[#B0A8B9] hover:text-white border border-[#3E374C]"
             }`}
           >
-            <div className="w-5 h-5 rounded-full overflow-hidden border border-[#00C0A3]/60 shrink-0">
+            <div className="w-8 h-8 rounded-full overflow-hidden border border-[#00C0A3]/60 shrink-0">
               <img
-                src="/foto_vic.jpeg"
+                src="/foto_vicIA.png"
                 alt="Vic"
                 className="w-full h-full object-cover object-[center_20%]"
                 referrerPolicy="no-referrer"
@@ -601,9 +601,9 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
           {/* Empty State */}
           {savedRecommendations.length === 0 ? (
             <div className="bg-[#292433] border border-[#3E374C] rounded-2xl p-8 sm:p-12 text-center max-w-2xl mx-auto">
-              <div className="relative w-20 h-20 rounded-full border-2 border-[#00C0A3] shadow-lg shadow-[#00C0A3]/20 overflow-hidden mx-auto mb-4 bg-[#1E1B24]">
+              <div className="relative w-25 h-25 rounded-full border-2 border-[#00C0A3] shadow-lg shadow-[#00C0A3]/20 overflow-hidden mx-auto mb-4 bg-[#1E1B24]">
                 <img
-                  src="/foto_vic.jpeg"
+                  src="/foto_vicIA.png"
                   alt="Vic - Personal MoveFIT"
                   className="w-full h-full object-cover object-[center_20%]"
                   referrerPolicy="no-referrer"
