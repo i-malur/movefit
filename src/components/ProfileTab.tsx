@@ -501,7 +501,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
           >
             <div className="w-8 h-8 rounded-full overflow-hidden border border-[#00C0A3]/60 shrink-0">
               <img
-                src="/foto_vicIA.png"
+                src="assets/foto_vicIA.png"
                 alt="Vic"
                 className="w-full h-full object-cover object-[center_20%]"
                 referrerPolicy="no-referrer"
@@ -603,7 +603,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
             <div className="bg-[#292433] border border-[#3E374C] rounded-2xl p-8 sm:p-12 text-center max-w-2xl mx-auto">
               <div className="relative w-25 h-25 rounded-full border-2 border-[#00C0A3] shadow-lg shadow-[#00C0A3]/20 overflow-hidden mx-auto mb-4 bg-[#1E1B24]">
                 <img
-                  src="/foto_vicIA.png"
+                  src="assets/foto_vicIA.png"
                   alt="Vic - Personal MoveFIT"
                   className="w-full h-full object-cover object-[center_20%]"
                   referrerPolicy="no-referrer"
@@ -657,7 +657,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                           </span>
                           <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-[#00C0A3]">
                             <span className="w-3.5 h-3.5 rounded-full overflow-hidden border border-[#00C0A3]/60 inline-block align-middle">
-                              <img src="/foto_vic.jpeg" alt="Vic" className="w-full h-full object-cover object-[center_20%]" />
+                              <img src="assets/foto_vic.jpeg" alt="Vic" className="w-full h-full object-cover object-[center_20%]" />
                             </span>
                             Vic
                           </span>

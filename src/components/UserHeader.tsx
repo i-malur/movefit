@@ -156,7 +156,7 @@ export const UserHeader: React.FC<UserHeaderProps> = ({
           >
             <div className="relative w-10 h-10 rounded-full overflow-hidden border border-[#00C0A3]/60 shrink-0">
               <img
-                src="/foto_vicIA.png"
+                src="assets/foto_vicIA.png"
                 alt="Vic"
                 className="w-full h-full object-cover object-[center_20%]"
                 referrerPolicy="no-referrer"

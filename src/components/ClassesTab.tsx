@@ -260,7 +260,7 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
         >
           <div className="w-9 h-9 rounded-full overflow-hidden shrink-0 border border-[#00C0A3]/60">
             <img
-              src="/foto_vicIA.png"
+              src="/assets/foto_vicIA.png"
               alt="Vic"
               className="w-full h-full object-cover object-[center_20%]"
               referrerPolicy="no-referrer"
@@ -414,7 +414,7 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
             >
               <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-[#00C0A3]/50">
                 <img
-                  src="/foto_vicIA.png"
+                  src="assets/foto_vicIA.png"
                   alt="Vic"
                   className="w-full h-full object-cover object-[center_20%]"
                   referrerPolicy="no-referrer"

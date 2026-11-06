@@ -662,7 +662,7 @@ O que vamos focar no treino de hoje?`,
           <div className="flex items-center gap-3.5">
             <div className="relative shrink-0">
               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-2 border-[#00C0A3] shadow-lg shadow-[#00C0A3]/20 bg-[#1E1B24]">
-                <img src="/foto_vicIA.png" alt="Vic IA" className="w-full h-full object-cover object-[center_20%]" />
+                <img src="assets/foto_vicIA.png" alt="Vic IA" className="w-full h-full object-cover object-[center_20%]" />
               </div>
             </div>
 
@@ -845,7 +845,7 @@ O que vamos focar no treino de hoje?`,
                 <div key={msg.id} className={`flex items-start gap-3 ${isVic ? "justify-start" : "justify-end"}`}>
                   {isVic && (
                     <div className="w-10 h-10 rounded-full border border-[#00C0A3]/50 shrink-0 mt-0.5 overflow-hidden bg-[#1E1B24]">
-                      <img src="/foto_vicIA.png" alt="Vic" className="w-full h-full object-cover object-[center_20%]" />
+                      <img src="assets/foto_vicIA.png" alt="Vic" className="w-full h-full object-cover object-[center_20%]" />
                     </div>
                   )}
 
@@ -959,7 +959,7 @@ O que vamos focar no treino de hoje?`,
             {isLoading && (
               <div className="flex items-start gap-3 justify-start animate-fadeIn">
                 <div className="w-10 h-10 rounded-full border border-[#00C0A3]/50 shrink-0 overflow-hidden bg-[#1E1B24]">
-                  <img src="/foto_vicIA.png" alt="Vic" className="w-full h-full object-cover object-[center_20%]" />
+                  <img src="assets/foto_vicIA.png" alt="Vic" className="w-full h-full object-cover object-[center_20%]" />
                 </div>
                 <div className="bg-[#1E1B24] border border-[#3E374C] rounded-2xl px-4 py-3 text-xs text-[#B0A8B9] flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin text-[#00C0A3]" />
