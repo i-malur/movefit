@@ -340,11 +340,14 @@ async function seedDatabase() {
       });
     }
 
+    try {
     const classesData = [
-      { id: "pilates", name: "Pilates", category: "Flexibilidade & Core", days: "Seg/Qua/Sex", iconName: "Activity", description: "Fortalecimento do core, postura e flexibilidade." },
-      { id: "spinning", name: "Spinning", category: "Cardio Alta Intensidade", days: "Ter/Qui", iconName: "Bike", description: "Treino aeróbico dinâmico sobre bicicleta ergométrica." },
-      { id: "fitdance", name: "FitDance", category: "Ritmo & Queima", days: "Seg/Qua", iconName: "Music", description: "Aulas de dança dinâmicas com coreografias atuais." },
-      { id: "funcional", name: "Treino Funcional", category: "Condicionamento Total", days: "Ter/Qui", iconName: "Dumbbell", description: "Exercícios dinâmicos para agilidade, força e resistência." },
+      { id: "pilates", name: "Pilates", category: "Flexibilidade & Core", days: "Seg / Qua / Sex", iconName: "Activity", description: "Fortalecimento do core, postura e flexibilidade." },
+      { id: "spinning", name: "Spinning", category: "Cardio Alta Intensidade", days: "Seg a Sex", iconName: "Bike", description: "Treino aeróbico dinâmico sobre bicicleta ergométrica." },
+      { id: "fitdance", name: "FitDance", category: "Ritmo & Queima", days: "Seg / Qua / Sex", iconName: "Music", description: "Aulas de dança dinâmicas com coreografias atuais." },
+      { id: "funcional", name: "Treino Funcional", category: "Condicionamento Total", days: "Ter / Qui / Sáb", iconName: "Dumbbell", description: "Exercícios dinâmicos para agilidade, força e resistência." },
+      { id: "yoga", name: "Yoga & Mindfulness", category: "Bem-estar & Mente", days: "Ter / Qui", iconName: "Activity", description: "Conexão entre respiração, postura corporal e relaxamento." },
+      { id: "boxe", name: "Boxe Fitness", category: "Luta & Cardio", days: "Seg / Qua / Sex", iconName: "Dumbbell", description: "Técnicas de boxe combinadas com circuito de alta intensidade." },
     ];
 
     for (const c of classesData) {
