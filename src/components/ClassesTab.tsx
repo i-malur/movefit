@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { GymClass, BookedClass } from "../types";
 import {
   Calendar,
@@ -26,6 +26,61 @@ interface ClassesTabProps {
   userMatricula: string;
 }
 
+// Modalidades padrão de segurança caso a API ainda não tenha retornado os dados
+const DEFAULT_CLASSES: GymClass[] = [
+  {
+    id: "pilates",
+    name: "Pilates",
+    category: "Flexibilidade & Core",
+    days: "Seg / Qua / Sex",
+    description: "Fortalecimento do core, postura e flexibilidade.",
+    iconName: "Activity",
+    slots: [
+      { time: "07:00", totalSpots: 30, bookedSpots: 0, availableSpots: 30 },
+      { time: "10:00", totalSpots: 30, bookedSpots: 0, availableSpots: 30 },
+      { time: "18:00", totalSpots: 30, bookedSpots: 0, availableSpots: 30 },
+    ],
+  },
+  {
+    id: "spinning",
+    name: "Spinning",
+    category: "Cardio Alta Intensidade",
+    days: "Ter / Qui",
+    description: "Treino aeróbico dinâmico sobre bicicleta ergométrica.",
+    iconName: "Bike",
+    slots: [
+      { time: "06:30", totalSpots: 30, bookedSpots: 0, availableSpots: 30 },
+      { time: "12:00", totalSpots: 30, bookedSpots: 0, availableSpots: 30 },
+      { time: "19:30", totalSpots: 30, bookedSpots: 0, availableSpots: 30 },
+    ],
+  },
+  {
+    id: "fitdance",
+    name: "FitDance",
+    category: "Ritmo & Queima",
+    days: "Seg / Qua",
+    description: "Aulas de dança dinâmicas com coreografias atuais.",
+    iconName: "Music",
+    slots: [
+      { time: "11:00", totalSpots: 30, bookedSpots: 0, availableSpots: 30 },
+      { time: "19:00", totalSpots: 30, bookedSpots: 0, availableSpots: 30 },
+    ],
+  },
+  {
+    id: "funcional",
+    name: "Treino Funcional",
+    category: "Condicionamento Total",
+    days: "Ter / Qui",
+    description: "Exercícios dinâmicos para agilidade, força e resistência.",
+    iconName: "Dumbbell",
+    slots: [
+      { time: "07:30", totalSpots: 30, bookedSpots: 0, availableSpots: 30 },
+      { time: "17:30", totalSpots: 30, bookedSpots: 0, availableSpots: 30 },
+      { time: "18:30", totalSpots: 30, bookedSpots: 0, availableSpots: 30 },
+    ],
+  },
+];
+
 export const ClassesTab: React.FC<ClassesTabProps> = ({
   classesList = [],
   bookedClasses = [],
@@ -34,8 +89,8 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
   onNavigateToVic,
   userMatricula,
 }) => {
-  // Garantia absoluta de array para evitar o erro Cannot read properties of undefined (reading 'find')
-  const safeClassesList = Array.isArray(classesList) ? classesList : [];
+  // Se classesList vier vazio do backend, assume a lista padrão automaticamente
+  const safeClassesList = Array.isArray(classesList) && classesList.length > 0 ? classesList : DEFAULT_CLASSES;
   const safeBookedClasses = Array.isArray(bookedClasses) ? bookedClasses : [];
 
   const [selectedClassId, setSelectedClassId] = useState<string>("pilates");
@@ -44,6 +99,12 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
   const [bookingMessage, setBookingMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const currentClass = safeClassesList.find((c) => c.id === selectedClassId) || safeClassesList[0];
+
+  useEffect(() => {
+    if (safeClassesList.length > 0 && !safeClassesList.some((c) => c.id === selectedClassId)) {
+      setSelectedClassId(safeClassesList[0].id);
+    }
+  }, [safeClassesList, selectedClassId]);
 
   const handleClassChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedClassId(e.target.value);
@@ -186,15 +247,11 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
               onChange={handleClassChange}
               className="w-full h-11 px-3.5 bg-[#1E1B24] border border-[#3E374C] rounded-xl text-white text-sm focus:outline-none focus:border-[#00C0A3] cursor-pointer"
             >
-              {safeClassesList.length === 0 ? (
-                <option value="">A carregar modalidades...</option>
-              ) : (
-                safeClassesList.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} ({c.days}) • 50 min
-                  </option>
-                ))
-              )}
+              {safeClassesList.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.days}) • 50 min
+                </option>
+              ))}
             </select>
           </div>
 
