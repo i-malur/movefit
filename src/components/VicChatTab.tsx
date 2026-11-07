@@ -52,9 +52,6 @@ interface VicChatTabProps {
   onNavigateToProfile?: () => void;
 }
 
-// ============================================================
-// COMPONENTE DE CARD DEMONSTRATIVO DE EXERCÍCIO (YOUTUBE GUIADO)
-// ============================================================
 const EXERCISE_TRANSLATIONS: Record<string, string> = {
   "jumping_jacks": "Polichinelo",
   "jumping jacks": "Polichinelo",
@@ -125,38 +122,10 @@ const ExerciseCard: React.FC<{ exerciseName: string }> = ({ exerciseName }) => {
 };
 
 const VIC_VOICES = [
-  {
-    id: "bella",
-    name: "Bella",
-    label: "Vic Energética (Bella)",
-    description: "Jovem, articulada e dinâmica",
-    emoji: "🩷",
-    accent: "en-US / pt-BR",
-  },
-  {
-    id: "rachel",
-    name: "Rachel",
-    label: "Vic Natural (Rachel)",
-    description: "Calma, fluida e amigável",
-    emoji: "✨",
-    accent: "en-US / pt-BR",
-  },
-  {
-    id: "domi",
-    name: "Domi",
-    label: "Vic Forte (Domi)",
-    description: "Enérgica, firme e motivadora",
-    emoji: "🔥",
-    accent: "en-US / pt-BR",
-  },
-  {
-    id: "elli",
-    name: "Elli",
-    label: "Vic Suave (Elli)",
-    description: "Jovem, leve e espontânea",
-    emoji: "🌸",
-    accent: "en-US / pt-BR",
-  },
+  { id: "bella", name: "Bella", label: "Vic Energética (Bella)", description: "Jovem e dinâmica", emoji: "🩷" },
+  { id: "rachel", name: "Rachel", label: "Vic Natural (Rachel)", description: "Calma e amigável", emoji: "✨" },
+  { id: "domi", name: "Domi", label: "Vic Forte (Domi)", description: "Enérgica e motivadora", emoji: "🔥" },
+  { id: "elli", name: "Elli", label: "Vic Suave (Elli)", description: "Jovem e espontânea", emoji: "🌸" },
 ];
 
 export const VicChatTab: React.FC<VicChatTabProps> = ({
@@ -170,100 +139,48 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
   onRemoveRecommendation,
   onNavigateToProfile,
 }) => {
-  const [toastNotification, setToastNotification] = useState<string | null>(null);
+  // Garantir a obtenção do ID do utilizador (suporta id e _id do MongoDB)
+  const currentUserId = user?.id || (user as any)?._id || "";
 
-  // Estados de Gerenciamento do Histórico de Sessões
+  const [toastNotification, setToastNotification] = useState<string | null>(null);
   const [sessions, setSessions] = useState<Array<{ id: string; title: string; createdAt: string }>>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [showHistorySidebar, setShowHistorySidebar] = useState(false);
 
   const parseVicMessageContent = (content: string) => {
     const match = content.match(/\[EXERCISES:\s*(.*?)\]/i);
-    if (!match) {
-      return { textContent: content, exercisesList: [] };
-    }
+    if (!match) return { textContent: content, exercisesList: [] };
 
     const textContent = content.replace(/\[EXERCISES:\s*.*?\]/gi, "").trim();
-    const exercisesList = match[1]
-      .split(",")
-      .map((e) => e.trim())
-      .filter(Boolean);
-
+    const exercisesList = match[1].split(",").map((e) => e.trim()).filter(Boolean);
     return { textContent, exercisesList };
   };
 
   const detectRecommendationCategory = (text: string): RecommendationCategory => {
     const lower = text.toLowerCase();
-    if (
-      lower.includes("aqueciment") ||
-      lower.includes("esteira") ||
-      lower.includes("mobilidade") ||
-      lower.includes("elíptico") ||
-      lower.includes("remo seco") ||
-      lower.includes("corda")
-    ) {
-      return "aquecimento";
-    }
-    if (
-      lower.includes("treino principal") ||
-      lower.includes("treino secundário") ||
-      lower.includes("treino a") ||
-      lower.includes("treino b") ||
-      lower.includes("série") ||
-      lower.includes("repetições") ||
-      lower.includes("supino") ||
-      lower.includes("leg press") ||
-      lower.includes("agachamento") ||
-      lower.includes("drop-set") ||
-      lower.includes("remada") ||
-      lower.includes("puxada")
-    ) {
-      return "treino";
-    }
-    if (
-      lower.includes("execu") ||
-      lower.includes("exercício") ||
-      lower.includes("postura") ||
-      lower.includes("movimento") ||
-      lower.includes("biomecânica")
-    ) {
-      return "exercicio";
-    }
+    if (lower.includes("aqueciment") || lower.includes("esteira") || lower.includes("mobilidade")) return "aquecimento";
+    if (lower.includes("treino") || lower.includes("série") || lower.includes("agachamento")) return "treino";
+    if (lower.includes("execu") || lower.includes("exercício") || lower.includes("postura")) return "exercicio";
     return "geral";
   };
 
   const extractRecommendationTitle = (text: string, category: RecommendationCategory): string => {
     const firstLine = text.trim().split("\n")[0].replace(/[#*•-]/g, "").trim();
-    if (firstLine.length > 5 && firstLine.length <= 50) {
-      return firstLine;
-    }
-    switch (category) {
-      case "aquecimento":
-        return "Aquecimento Oficial MoveFIT";
-      case "treino":
-        return `Série de Treino (${user.trainingLevel})`;
-      case "exercicio":
-        return "Orientação de Exercício da Vic";
-      default:
-        return "Recomendação Personalizada da Vic";
-    }
+    if (firstLine.length > 5 && firstLine.length <= 50) return firstLine;
+    return category === "aquecimento" ? "Aquecimento MoveFIT" : category === "treino" ? `Treino (${user.trainingLevel})` : "Recomendação da Vic";
   };
 
   const isMessageSaved = (msg: ChatMessage) => {
     if (!savedRecommendations) return false;
-    return savedRecommendations.some(
-      (r) => r.sourceMessageId === msg.id || (r.content && r.content.trim() === msg.content.trim())
-    );
+    return savedRecommendations.some((r) => r.sourceMessageId === msg.id || (r.content && r.content.trim() === msg.content.trim()));
   };
 
   const handleToggleSaveRecommendation = (msg: ChatMessage) => {
-    const existing = savedRecommendations?.find(
-      (r) => r.sourceMessageId === msg.id || (r.content && r.content.trim() === msg.content.trim())
-    );
+    const existing = savedRecommendations?.find((r) => r.sourceMessageId === msg.id || (r.content && r.content.trim() === msg.content.trim()));
 
     if (existing && onRemoveRecommendation) {
       onRemoveRecommendation(existing.id);
-      setToastNotification("Recomendação removida dos seus salvos.");
+      setToastNotification("Recomendação removida dos salvos.");
       setTimeout(() => setToastNotification(null), 3000);
       return;
     }
@@ -271,23 +188,14 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
     if (onSaveRecommendation) {
       const category = detectRecommendationCategory(msg.content);
       const title = extractRecommendationTitle(msg.content, category);
-      onSaveRecommendation({
-        title,
-        category,
-        content: msg.content,
-        sourceMessageId: msg.id,
-      });
+      onSaveRecommendation({ title, category, content: msg.content, sourceMessageId: msg.id });
       setToastNotification("Recomendação salva no seu Perfil! ✨");
       setTimeout(() => setToastNotification(null), 4000);
     }
   };
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    const bookedText =
-      bookedClasses.length > 0
-        ? `Você tem **${bookedClasses.length} aula(s)** agendada(s) para esta semana!`
-        : "Ainda não vi nenhuma aula agendada no seu cronograma.";
-
+    const bookedText = bookedClasses.length > 0 ? `Você tem **${bookedClasses.length} aula(s)** agendada(s)!` : "Nenhuma aula agendada no momento.";
     const userWeight = user.weight ? `${user.weight} kg` : "não informado";
     const userHeight = user.height ? `${user.height} cm` : "não informada";
 
@@ -295,11 +203,7 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
       {
         id: "msg-welcome",
         role: "assistant",
-        content: `Oi, ${user.fullName.split(" ")[0]}! Sou a Vic, sua personal trainer na MoveFIT! 💪✨
-
-Já carreguei seu perfil por aqui: nível **${user.trainingLevel}**, peso **${userWeight}**, altura **${userHeight}**, restrição médica "${user.medicalNotes}" e ${bookedText}
-
-Como posso te ajudar com seus treinos hoje? Se quiser, posso agendar suas aulas coletivas de 50 minutos ou montar uma rotina personalizada!`,
+        content: `Oi, ${user.fullName.split(" ")[0]}! Sou a Vic, sua personal trainer na MoveFIT! 💪✨\n\nPerfil carregado: nível **${user.trainingLevel}**, peso **${userWeight}**, altura **${userHeight}**, obs médica: "${user.medicalNotes}" e ${bookedText}\n\nComo posso ajudar você hoje?`,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       },
     ];
@@ -307,15 +211,8 @@ Como posso te ajudar com seus treinos hoje? Se quiser, posso agendar suas aulas 
 
   const [inputPrompt, setInputPrompt] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-
-  const [selectedVoiceKey, setSelectedVoiceKey] = useState<string>(() => {
-    return localStorage.getItem("vicVoiceKey") || "bella";
-  });
-
-  const [autoSpeak, setAutoSpeak] = useState<boolean>(() => {
-    return localStorage.getItem("vicAutoSpeak") !== "false";
-  });
-
+  const [selectedVoiceKey, setSelectedVoiceKey] = useState<string>(() => localStorage.getItem("vicVoiceKey") || "bella");
+  const [autoSpeak, setAutoSpeak] = useState<boolean>(() => localStorage.getItem("vicAutoSpeak") !== "false");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
@@ -324,21 +221,16 @@ Como posso te ajudar com seus treinos hoje? Se quiser, posso agendar suas aulas 
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
-
   const [isListening, setIsListening] = useState(false);
   const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
-
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Carregar histórico de sessões do MongoDB Atlas
   useEffect(() => {
-    if (user?.id) {
-      fetch(`/api/vic/sessions/${user.id}`)
-        .then((res) => {
-          if (!res.ok) return [];
-          return res.json();
-        })
+    if (currentUserId) {
+      fetch(`/api/vic/sessions/${currentUserId}`)
+        .then((res) => (res.ok ? res.json() : []))
         .then((data) => {
           if (Array.isArray(data)) {
             setSessions(data);
@@ -351,7 +243,7 @@ Como posso te ajudar com seus treinos hoje? Se quiser, posso agendar suas aulas 
         })
         .catch((err) => console.error("Erro ao carregar sessões de chat:", err));
     }
-  }, [user?.id]);
+  }, [currentUserId]);
 
   useEffect(() => {
     localStorage.setItem("vicVoiceKey", selectedVoiceKey);
@@ -361,37 +253,23 @@ Como posso te ajudar com seus treinos hoje? Se quiser, posso agendar suas aulas 
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
-  // Função para criar uma nova sessão no MongoDB
   const handleCreateNewChat = async () => {
-    if (!user?.id) return;
+    if (!currentUserId) return;
     try {
       const res = await fetch("/api/vic/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, title: "Nova conversa com a Vic" }),
+        body: JSON.stringify({ userId: currentUserId, title: "Nova conversa com a Vic" }),
       });
       const newSession = await res.json();
       if (newSession?.id) {
         setSessions((prev) => [newSession, ...prev]);
         setCurrentSessionId(newSession.id);
-
-        const bookedText =
-          bookedClasses.length > 0
-            ? `Você tem **${bookedClasses.length} aula(s)** no seu cronograma.`
-            : "Nenhuma aula agendada por enquanto.";
-
-        const userWeight = user.weight ? `${user.weight} kg` : "não informado";
-        const userHeight = user.height ? `${user.height} cm` : "não informada";
-
         setMessages([
           {
             id: "msg-welcome-" + Date.now(),
             role: "assistant",
-            content: `Nova conversa iniciada, ${user.fullName.split(" ")[0]}! 🌟
-
-Seu perfil está atualizado: nível **${user.trainingLevel}**, peso **${userWeight}**, altura **${userHeight}**, restrição médica "${user.medicalNotes}" e ${bookedText}
-
-O que vamos focar no treino de hoje?`,
+            content: `Nova conversa iniciada, ${user.fullName.split(" ")[0]}! 🌟\n\nO que vamos treinar hoje?`,
             timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           },
         ]);
@@ -401,7 +279,6 @@ O que vamos focar no treino de hoje?`,
     }
   };
 
-  // Carregar mensagens de uma sessão salva no MongoDB
   const handleSelectSession = async (sessionId: string) => {
     setCurrentSessionId(sessionId);
     stopSpeaking();
@@ -421,7 +298,7 @@ O que vamos focar no treino de hoje?`,
         );
       }
     } catch (e) {
-      console.error("Erro ao carregar mensagens da sessão:", e);
+      console.error("Erro ao carregar mensagens:", e);
     }
   };
 
@@ -444,7 +321,6 @@ O que vamos focar no treino de hoje?`,
     stopSpeaking();
     setIsAudioLoading(true);
     setAudioLoadingMessageId(messageId);
-
     const voiceKey = voiceKeyToUse || selectedVoiceKey;
 
     try {
@@ -455,7 +331,6 @@ O que vamos focar no treino de hoje?`,
       });
 
       if (!response.ok) throw new Error("Erro na API de voz");
-
       const audioBlob = await response.blob();
       if (!audioBlob.size) throw new Error("Áudio vazio");
 
@@ -475,10 +350,7 @@ O que vamos focar no treino de hoje?`,
       audio.onended = () => {
         setIsSpeaking(false);
         setSpeakingMessageId(null);
-        if (audioUrlRef.current) {
-          URL.revokeObjectURL(audioUrlRef.current);
-          audioUrlRef.current = null;
-        }
+        if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
       };
 
       audio.onerror = () => {
@@ -490,7 +362,6 @@ O que vamos focar no treino de hoje?`,
 
       await audio.play();
     } catch (err) {
-      console.warn("⚠ Falha ao carregar áudio:", err);
       setIsAudioLoading(false);
       setAudioLoadingMessageId(null);
       setIsSpeaking(false);
@@ -498,23 +369,12 @@ O que vamos focar no treino de hoje?`,
     }
   };
 
-  const handleSelectVoice = async (voiceId: string, voiceName: string) => {
-    setSelectedVoiceKey(voiceId);
-    stopSpeaking();
-
-    const testMessageId = "voice-preview-" + Date.now();
-    const testPhrase = `Oi! Eu sou a Vic na versão ${voiceName}. Vamos treinar juntos hoje?`;
-
-    await speakText(testPhrase, testMessageId, voiceId);
-  };
-
   const toggleMicrophone = async () => {
     setMicPermissionError(null);
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      setMicPermissionError("Seu navegador não oferece suporte ao reconhecimento de voz.");
+      setMicPermissionError("Reconhecimento de voz não suportado neste navegador.");
       return;
     }
 
@@ -527,16 +387,12 @@ O que vamos focar no treino de hoje?`,
       const recognition = new SpeechRecognition();
       recognition.lang = "pt-BR";
       recognition.continuous = false;
-
       recognition.onstart = () => setIsListening(true);
       recognition.onend = () => setIsListening(false);
       recognition.onerror = () => setIsListening(false);
-
       recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setInputPrompt(transcript);
+        setInputPrompt(event.results[0][0].transcript);
       };
-
       recognition.start();
     } catch {
       setIsListening(false);
@@ -555,11 +411,10 @@ O que vamos focar no treino de hoje?`,
     "Vic, agenda Spinning às 12:00",
     "Vic, marca FitDance às 19:00",
     "Vic, agenda Treino Funcional às 18:30",
-    "Quanto tempo dura cada aula coletiva?",
     `Dicas de treino para nível ${user.trainingLevel}`,
   ];
 
-  // Enviar Mensagem para o Backend MongoDB
+  // Enviar Mensagem para o Backend e Sincronizar Estado Local
   const handleSendMessage = async (textToSend?: string) => {
     const messageContent = (textToSend || inputPrompt).trim();
     if (!messageContent || isLoading) return;
@@ -581,30 +436,29 @@ O que vamos focar no treino de hoje?`,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: messageContent,
-          userId: user?.id,
+          userId: currentUserId,
           sessionId: currentSessionId,
         }),
       });
 
-      if (!response.ok) {
-        throw new Error("Erro na resposta do servidor.");
-      }
+      if (!response.ok) throw new Error("Erro no servidor.");
 
       const data = await response.json();
       let executedAction: ChatAction | undefined = undefined;
 
-      if (data.action?.type === "BOOK_CLASS") {
-        const res = onBookClass(data.action.classId, data.action.time);
-        executedAction = { ...data.action, status: res.success ? "success" : "error", statusMessage: res.message };
+      // Executa a sincronização do agendamento com o React se a ação do MongoDB ocorreu com sucesso
+      if (data.action?.type === "BOOK_CLASS" && data.action?.status === "success") {
+        onBookClass(data.action.classId, data.action.time);
+        executedAction = data.action;
       } else if (data.action?.type === "CANCEL_CLASS") {
         const found = bookedClasses.find((b) => b.classId === data.action.classId);
         if (found) {
-          onCancelBooking(found.bookingId);
+          onCancelBooking(found.bookingId || (found as any).id);
           executedAction = { ...data.action, status: "success", statusMessage: "Inscrição cancelada com sucesso." };
         }
       }
 
-      const replyText = data.response || data.reply || "Bora focar nos treinos! 💪";
+      const replyText = data.response || "Com certeza! Vamos focar nos seus resultados! 💪";
 
       const vicReply: ChatMessage = {
         id: "msg-" + Date.now(),
@@ -616,16 +470,6 @@ O que vamos focar no treino de hoje?`,
 
       setMessages((prev) => [...prev, vicReply]);
 
-      if (currentSessionId) {
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === currentSessionId && s.title === "Nova conversa com a Vic"
-              ? { ...s, title: messageContent.substring(0, 25) + "..." }
-              : s
-          )
-        );
-      }
-
       if (autoSpeak) {
         setTimeout(() => speakText(vicReply.content, vicReply.id, selectedVoiceKey), 100);
       }
@@ -635,7 +479,7 @@ O que vamos focar no treino de hoje?`,
         {
           id: "msg-" + Date.now(),
           role: "assistant",
-          content: "Tive uma oscilação de rede, mas estou aqui com você! Como posso ajudar?",
+          content: "Tive uma oscilação na conexão, mas a sua vaga pode ter sido agendada. Verifique no seu perfil!",
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },
       ]);
@@ -645,23 +489,14 @@ O que vamos focar no treino de hoje?`,
     }
   };
 
-  const handleClearHistory = () => {
-    stopSpeaking();
-    handleCreateNewChat();
-  };
-
   return (
     <div className="space-y-5 pb-12 max-w-5xl mx-auto">
       {/* HEADER DA VIC */}
       <div className="bg-[#292433] border border-[#3E374C] rounded-2xl p-5 shadow-xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-[#00C0A3]/10 rounded-full blur-3xl pointer-events-none"></div>
-
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <div className="relative shrink-0">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-2 border-[#00C0A3] shadow-lg shadow-[#00C0A3]/20 bg-[#1E1B24]">
-                <img src="assets/foto_vicIA.png" alt="Vic IA" className="w-full h-full object-cover object-[center_20%]" />
-              </div>
+            <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-2 border-[#00C0A3] shadow-lg bg-[#1E1B24]">
+              <img src="/assets/foto_vicIA.png" alt="Vic IA" className="w-full h-full object-cover object-[center_20%]" />
             </div>
 
             <div>
@@ -684,80 +519,12 @@ O que vamos focar no treino de hoje?`,
             </button>
 
             <button
-              onClick={() => {
-                setAutoSpeak((prev) => {
-                  const next = !prev;
-                  localStorage.setItem("vicAutoSpeak", String(next));
-                  if (!next) stopSpeaking();
-                  return next;
-                });
-              }}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                autoSpeak ? "bg-[#00C0A3]/15 border-[#00C0A3]/40 text-[#00C0A3]" : "bg-[#1E1B24] border-[#3E374C] text-[#B0A8B9]"
-              }`}
-            >
-              {autoSpeak ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
-              <span className="hidden xs:inline">{autoSpeak ? "Voz Ativa" : "Voz Muta"}</span>
-            </button>
-
-            <button
-              onClick={() => setShowVoiceSettings((prev) => !prev)}
-              className="px-3 py-1.5 rounded-xl bg-[#1E1B24] border border-[#3E374C] text-[#B0A8B9] hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
-            >
-              <Settings2 className="w-3.5 h-3.5" /> Vozes
-            </button>
-
-            <button
-              onClick={handleClearHistory}
+              onClick={handleCreateNewChat}
               className="px-3 py-1.5 rounded-xl bg-[#1E1B24] hover:bg-[#3E374C] text-[#B0A8B9] hover:text-white border border-[#3E374C] text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" /> Novo Chat
             </button>
           </div>
-        </div>
-
-        {/* PAINEL DE VOZES ELEVENLABS */}
-        {showVoiceSettings && (
-          <div className="mt-4 pt-4 border-t border-[#3E374C] space-y-3 animate-fadeIn">
-            <p className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-              <Volume2 className="w-3.5 h-3.5 text-[#00C0A3]" /> Vozes Disponíveis (ElevenLabs HD)
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-              {VIC_VOICES.map((voice) => (
-                <button
-                  key={voice.id}
-                  onClick={() => handleSelectVoice(voice.id, voice.name)}
-                  className={`text-left p-3 rounded-xl border transition-all cursor-pointer ${
-                    selectedVoiceKey === voice.id ? "bg-[#00C0A3]/10 border-[#00C0A3]" : "bg-[#1E1B24] border-[#3E374C] hover:border-[#845EC2]/50"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{voice.emoji}</span>
-                    <div className="flex-1">
-                      <p className="text-xs font-bold text-white">{voice.label}</p>
-                      <p className="text-[10px] text-[#B0A8B9]">{voice.description}</p>
-                    </div>
-                    {selectedVoiceKey === voice.id && <Check className="w-4 h-4 text-[#00C0A3]" />}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="mt-4 pt-3 border-t border-[#3E374C] flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-[11px] font-semibold text-[#B0A8B9] uppercase tracking-wider flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-[#00C0A3]" /> Contexto Ativo:
-          </span>
-          <span className="bg-[#1E1B24] px-2.5 py-1 rounded-lg border border-[#3E374C] text-zinc-300">
-            Nível: <strong className="text-white">{user.trainingLevel}</strong>
-          </span>
-          <span className="bg-[#1E1B24] px-2.5 py-1 rounded-lg border border-[#3E374C] text-zinc-300">
-            Aulas salvas: <strong className="text-[#00C0A3]">{bookedClasses.length} agendada(s)</strong>
-          </span>
-          <span className="bg-[#1E1B24] px-2.5 py-1 rounded-lg border border-[#3E374C] text-zinc-300">
-            Duração oficial: <strong className="text-white">50 minutos</strong>
-          </span>
         </div>
       </div>
 
@@ -767,7 +534,6 @@ O que vamos focar no treino de hoje?`,
           <span className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
             <CalendarCheck2 className="w-4 h-4 text-[#00C0A3]" /> Agende direto em 1 clique com a Vic:
           </span>
-          <span className="text-[11px] text-[#B0A8B9]">Duração: 50 min cada</span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {quickClasses.map((qc) => {
@@ -792,7 +558,7 @@ O que vamos focar no treino de hoje?`,
         </div>
       </div>
 
-      {/* CONTAINER PRINCIPAL DO CHAT + HISTÓRICO DE CONVERSAS */}
+      {/* CONTAINER DO CHAT */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {showHistorySidebar && (
           <div className="md:col-span-1 bg-[#292433] border border-[#3E374C] rounded-2xl p-4 shadow-xl flex flex-col h-[520px] overflow-hidden">
@@ -800,40 +566,26 @@ O que vamos focar no treino de hoje?`,
               <span className="text-xs font-bold text-white flex items-center gap-1.5 uppercase tracking-wider">
                 <History className="w-3.5 h-3.5 text-[#00C0A3]" /> Histórico
               </span>
-              <button
-                onClick={handleCreateNewChat}
-                className="p-1 rounded-lg bg-[#00C0A3]/20 hover:bg-[#00C0A3]/30 text-[#00C0A3] text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" /> Novo
-              </button>
             </div>
-
             <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
-              {sessions.length === 0 ? (
-                <p className="text-[11px] text-zinc-500 text-center py-4">Nenhuma conversa anterior salva.</p>
-              ) : (
-                sessions.map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => handleSelectSession(s.id)}
-                    className={`w-full text-left p-2.5 rounded-xl text-xs transition-all truncate block cursor-pointer border ${
-                      currentSessionId === s.id
-                        ? "bg-[#845EC2]/20 border-[#845EC2] text-white font-semibold"
-                        : "bg-[#1E1B24] border-[#3E374C] text-zinc-300 hover:bg-[#292433]"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <MessageSquare className="w-3.5 h-3.5 text-[#00C0A3] shrink-0" />
-                      <span className="truncate flex-1">{s.title}</span>
-                    </div>
-                  </button>
-                ))
-              )}
+              {sessions.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => handleSelectSession(s.id)}
+                  className={`w-full text-left p-2.5 rounded-xl text-xs transition-all truncate block cursor-pointer border ${
+                    currentSessionId === s.id ? "bg-[#845EC2]/20 border-[#845EC2] text-white font-semibold" : "bg-[#1E1B24] border-[#3E374C] text-zinc-300"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="w-3.5 h-3.5 text-[#00C0A3] shrink-0" />
+                    <span className="truncate flex-1">{s.title}</span>
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
         )}
 
-        {/* CHAT PRINCIPAL */}
         <div className={`bg-[#292433] border border-[#3E374C] rounded-2xl shadow-xl flex flex-col h-[520px] overflow-hidden ${showHistorySidebar ? "md:col-span-3" : "md:col-span-4"}`}>
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
             {messages.map((msg) => {
@@ -842,7 +594,7 @@ O que vamos focar no treino de hoje?`,
                 <div key={msg.id} className={`flex items-start gap-3 ${isVic ? "justify-start" : "justify-end"}`}>
                   {isVic && (
                     <div className="w-10 h-10 rounded-full border border-[#00C0A3]/50 shrink-0 mt-0.5 overflow-hidden bg-[#1E1B24]">
-                      <img src="assets/foto_vicIA.png" alt="Vic" className="w-full h-full object-cover object-[center_20%]" />
+                      <img src="/assets/foto_vicIA.png" alt="Vic" className="w-full h-full object-cover object-[center_20%]" />
                     </div>
                   )}
 
@@ -852,102 +604,22 @@ O que vamos focar no treino de hoje?`,
                       <span className="text-[10px] opacity-60">{msg.timestamp}</span>
                     </div>
 
-                    {isVic ? (
-                      (() => {
-                        const { textContent, exercisesList } = parseVicMessageContent(msg.content);
-
-                        return (
-                          <div className="space-y-3">
-                            <div className="whitespace-pre-wrap text-[13.5px]">{textContent}</div>
-
-                            {exercisesList.length > 0 && (
-                              <div className="mt-3 pt-3 border-t border-[#3E374C]">
-                                <p className="text-[11px] font-bold text-[#00C0A3] uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                  <Sparkles className="w-3.5 h-3.5" /> Demonstrativos dos Movimentos:
-                                </p>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                  {exercisesList.map((exName, idx) => (
-                                    <ExerciseCard key={idx} exerciseName={exName} />
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()
-                    ) : (
-                      <div className="whitespace-pre-wrap text-[13.5px]">{msg.content}</div>
-                    )}
-
-                    {isVic && (
-                      <div className="mt-2.5 flex items-center gap-2 flex-wrap">
-                        {isAudioLoading && audioLoadingMessageId === msg.id ? (
-                          <button disabled className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#845EC2]/20 text-[#cdb9ee] border border-[#845EC2]/30 text-[10px] font-semibold cursor-wait">
-                            <Loader2 className="w-3 h-3 animate-spin text-[#cdb9ee]" /> Carregando áudio...
-                          </button>
-                        ) : speakingMessageId === msg.id ? (
-                          <button onClick={stopSpeaking} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-[10px] font-semibold cursor-pointer">
-                            <Square className="w-3 h-3 fill-current" /> Parar
-                          </button>
-                        ) : (
-                          <button onClick={() => speakText(msg.content, msg.id)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#00C0A3]/10 hover:bg-[#00C0A3]/20 text-[#00C0A3] border border-[#00C0A3]/30 text-[10px] font-semibold cursor-pointer">
-                            <Volume2 className="w-3 h-3" /> Ouvir
-                          </button>
-                        )}
-
-                        {onSaveRecommendation && msg.id !== "msg-welcome" && (
-                          <button
-                            type="button"
-                            onClick={() => handleToggleSaveRecommendation(msg)}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
-                              isMessageSaved(msg) ? "bg-[#845EC2]/30 text-[#d6c7f7] border border-[#845EC2]/60" : "bg-[#292433] hover:bg-[#342f40] text-zinc-300 border border-[#3E374C]"
-                            }`}
-                          >
-                            {isMessageSaved(msg) ? (
-                              <>
-                                <BookmarkCheck className="w-3 h-3 text-[#00C0A3]" />
-                                <span>Salva no Perfil</span>
-                              </>
-                            ) : (
-                              <>
-                                <Bookmark className="w-3 h-3 text-zinc-400" />
-                                <span>Salvar Recomendação</span>
-                              </>
-                            )}
-                          </button>
-                        )}
-                      </div>
-                    )}
+                    <div className="whitespace-pre-wrap text-[13.5px]">{msg.content}</div>
 
                     {msg.action && (
                       <div className={`mt-3 p-3 rounded-xl border text-xs transition-all ${msg.action.status === "success" ? "bg-[#00C0A3]/10 border-[#00C0A3]/40 text-[#00C0A3]" : "bg-amber-500/10 border-amber-500/40 text-amber-300"}`}>
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-start gap-2.5">
-                            {msg.action.status === "success" ? <CheckCircle2 className="w-4 h-4 text-[#00C0A3] shrink-0 mt-0.5" /> : <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />}
+                            <CheckCircle2 className="w-4 h-4 text-[#00C0A3] shrink-0 mt-0.5" />
                             <div>
-                              <p className="font-bold">{msg.action.status === "success" ? "✓ Aula Salva com Sucesso no Seu Cronograma!" : "Aviso sobre o Agendamento"}</p>
+                              <p className="font-bold">✓ Aula Agendada no seu Perfil!</p>
                               <p className="text-[11px] mt-0.5 text-zinc-200">{msg.action.statusMessage || `${msg.action.className} às ${msg.action.time}`}</p>
-                              {msg.action.status === "success" && msg.action.type === "BOOK_CLASS" && (
-                                <p className="text-[10px] text-[#00C0A3] font-medium mt-1">Duração oficial da aula: 50 minutos</p>
-                              )}
                             </div>
                           </div>
-
-                          {onNavigateToClasses && msg.action.status === "success" && (
-                            <button onClick={onNavigateToClasses} className="shrink-0 px-2.5 py-1 rounded-lg bg-[#00C0A3] hover:bg-[#00a88f] text-black font-semibold text-[11px] flex items-center gap-1 transition-colors cursor-pointer">
-                              Ver Grade <ArrowRight className="w-3 h-3" />
-                            </button>
-                          )}
                         </div>
                       </div>
                     )}
                   </div>
-
-                  {!isVic && (
-                    <div className="w-8 h-8 rounded-xl bg-[#845EC2]/20 border border-[#845EC2]/40 flex items-center justify-center text-[#c8b2ed] shrink-0 mt-0.5">
-                      <UserIcon className="w-4 h-4" />
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -955,118 +627,39 @@ O que vamos focar no treino de hoje?`,
             {isLoading && (
               <div className="flex items-start gap-3 justify-start animate-fadeIn">
                 <div className="w-10 h-10 rounded-full border border-[#00C0A3]/50 shrink-0 overflow-hidden bg-[#1E1B24]">
-                  <img src="assets/foto_vicIA.png" alt="Vic" className="w-full h-full object-cover object-[center_20%]" />
+                  <img src="/assets/foto_vicIA.png" alt="Vic" className="w-full h-full object-cover object-[center_20%]" />
                 </div>
                 <div className="bg-[#1E1B24] border border-[#3E374C] rounded-2xl px-4 py-3 text-xs text-[#B0A8B9] flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin text-[#00C0A3]" />
-                  <span>Vic está pensando...</span>
+                  <span>Vic está processando o seu pedido...</span>
                 </div>
               </div>
             )}
-
             <div ref={messagesEndRef} />
           </div>
 
-          {/* SUGESTÕES DE PROMPTS */}
-          <div className="p-3 bg-[#1E1B24]/70 border-t border-[#3E374C] overflow-x-auto no-scrollbar flex items-center gap-2">
-            <span className="text-[10px] font-semibold text-[#B0A8B9] uppercase tracking-wider shrink-0 mr-1">Sugestões:</span>
-            {quickPrompts.map((prompt, idx) => (
-              <button
-                key={idx}
-                onClick={() => handleSendMessage(prompt)}
-                disabled={isLoading}
-                className="text-xs bg-[#292433] hover:bg-[#845EC2]/20 text-[#B0A8B9] hover:text-white border border-[#3E374C] px-3 py-1.5 rounded-xl whitespace-nowrap transition-all cursor-pointer shrink-0 disabled:opacity-50"
-              >
-                {prompt}
-              </button>
-            ))}
-          </div>
-
-          {/* INPUT FORM */}
           <div className="p-4 bg-[#1E1B24] border-t border-[#3E374C]">
-            {micPermissionError && (
-              <div className="mb-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-200 flex items-start justify-between gap-3">
-                <div className="flex items-start gap-2.5">
-                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-bold text-amber-300">Permissão do Microfone</p>
-                    <p className="text-[11px] text-zinc-300 mt-0.5">{micPermissionError}</p>
-                  </div>
-                </div>
-                <button type="button" onClick={() => setMicPermissionError(null)} className="px-2.5 py-1 rounded-lg bg-[#292433] text-[#B0A8B9] text-[10px]">Fechar</button>
-              </div>
-            )}
-
             <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={toggleMicrophone}
-                disabled={isLoading}
-                className={`shrink-0 w-12 h-12 rounded-xl flex items-center justify-center border transition-all cursor-pointer ${
-                  isListening ? "bg-red-500/20 border-red-500/50 text-red-400 animate-pulse" : "bg-[#292433] border-[#3E374C] text-[#B0A8B9] hover:text-white hover:border-[#00C0A3]/50 hover:bg-[#00C0A3]/10"
-                }`}
-              >
-                {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-              </button>
-
               <input
                 ref={inputRef}
-                id="vic-chat-input"
                 type="text"
                 value={inputPrompt}
                 onChange={(e) => setInputPrompt(e.target.value)}
-                placeholder={isListening ? "Estou ouvindo..." : "Fale ou digite para a Vic..."}
+                placeholder="Fale ou digite para a Vic..."
                 disabled={isLoading}
-                className="flex-1 px-4 py-3 bg-[#292433] border border-[#3E374C] rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] text-sm transition-all"
+                className="flex-1 px-4 py-3 bg-[#292433] border border-[#3E374C] rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-[#00C0A3] text-sm"
               />
-
               <button
-                id="btn-send-vic-chat"
                 type="submit"
                 disabled={!inputPrompt.trim() || isLoading}
-                className={`px-5 py-3 rounded-xl font-semibold text-sm flex items-center gap-2 transition-all cursor-pointer ${
-                  inputPrompt.trim() && !isLoading ? "bg-gradient-to-r from-[#845EC2] to-[#00C0A3] text-white shadow-lg glow-turquoise hover:opacity-95" : "bg-[#292433] text-[#B0A8B9] border border-[#3E374C] opacity-50 cursor-not-allowed"
-                }`}
+                className="px-5 py-3 rounded-xl font-semibold text-sm bg-gradient-to-r from-[#845EC2] to-[#00C0A3] text-white shadow-lg cursor-pointer"
               >
                 <Send className="w-4 h-4" />
-                <span className="hidden sm:inline">Enviar</span>
               </button>
             </form>
-
-            <div className="mt-2 flex items-center justify-center gap-2">
-              {isListening ? (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                  <span className="text-[10px] text-red-400">Vic está ouvindo você...</span>
-                </>
-              ) : isSpeaking ? (
-                <>
-                  <Volume2 className="w-3 h-3 text-[#845EC2]" />
-                  <span className="text-[10px] text-[#B0A8B9]">Vic está falando...</span>
-                  <button type="button" onClick={stopSpeaking} className="text-[10px] text-[#00C0A3] hover:underline">Parar</button>
-                </>
-              ) : (
-                <>
-                  <Mic className="w-3 h-3 text-[#B0A8B9]" />
-                  <span className="text-[10px] text-[#B0A8B9]">Clique no microfone para falar com a Vic</span>
-                </>
-              )}
-            </div>
           </div>
         </div>
       </div>
-
-      {toastNotification && (
-        <div className="fixed bottom-6 right-6 z-50 bg-[#292433] border border-[#00C0A3]/50 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2">
-          <CheckCircle2 className="w-5 h-5 text-[#00C0A3] shrink-0" />
-          <span className="text-xs font-semibold">{toastNotification}</span>
-          {onNavigateToProfile && (
-            <button onClick={onNavigateToProfile} className="ml-2 px-2.5 py-1 rounded-lg bg-[#00C0A3]/15 hover:bg-[#00C0A3]/25 text-[#00C0A3] text-xs font-bold transition-colors cursor-pointer">
-              Ver Perfil →
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 };

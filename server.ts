@@ -16,7 +16,6 @@ app.use(express.json({ limit: "2mb" }));
 // CONEXÃO SEGURA AO MONGODB ATLAS & INICIALIZAÇÃO
 // ============================================================
 
-// Aceita MONGODB_URI ou DATABASE_URL configurados no Render
 const mongoURI = process.env.MONGODB_URI || process.env.DATABASE_URL;
 
 async function connectDB() {
@@ -26,13 +25,11 @@ async function connectDB() {
   }
 
   try {
-    // Define timeout de seleção de servidor para evitar buffering infinito
     await mongoose.connect(mongoURI, {
       serverSelectionTimeoutMS: 5000,
     });
     console.log("✅ Banco de dados MongoDB conectado com sucesso!");
 
-    // Executa o seed APENAS após a conexão estar 100% estabelecida
     await seedDatabase();
   } catch (err: any) {
     console.error("❌ Erro ao conectar ao MongoDB Atlas:", err?.message || err);
@@ -162,7 +159,6 @@ const ChatMessage = mongoose.model<IChatMessage>("ChatMessage", ChatMessageSchem
 
 async function seedDatabase() {
   try {
-    // 1. Criar Usuário Demo Padrão se não existir
     const demoUser = await User.findOne({ id: "user-demo-1" });
     if (!demoUser) {
       await User.create({
@@ -179,7 +175,6 @@ async function seedDatabase() {
       });
     }
 
-    // 2. Criar Aulas Padrão se não existirem
     const classesData = [
       { id: "pilates", name: "Pilates", category: "Flexibilidade & Core", days: "Seg/Qua/Sex", iconName: "Activity", description: "Fortalecimento do core, postura e flexibilidade." },
       { id: "spinning", name: "Spinning", category: "Cardio Alta Intensidade", days: "Ter/Qui", iconName: "Bike", description: "Treino aeróbico dinâmico sobre bicicleta ergométrica." },
@@ -215,14 +210,108 @@ function generateFitUsername(fullName: string): string {
 }
 
 // ============================================================
+// INTENÇÃO E PROCESSAMENTO DE AÇÕES DA VIC NO MONGODB
+// ============================================================
+
+const CLASS_NAMES: Record<string, string> = {
+  pilates: "Pilates",
+  spinning: "Spinning",
+  fitdance: "FitDance",
+  funcional: "Treino Funcional",
+};
+
+function parseBookingIntent(text: string): { type: "BOOK_CLASS" | "CANCEL_CLASS"; classId: string; time?: string; className: string } | null {
+  const lower = text.toLowerCase();
+
+  if (lower.includes("cancela") || lower.includes("desmarca") || lower.includes("remover aula") || lower.includes("tirar minha vaga")) {
+    if (lower.includes("pilates")) return { type: "CANCEL_CLASS", classId: "pilates", className: "Pilates" };
+    if (lower.includes("spinning") || lower.includes("bike")) return { type: "CANCEL_CLASS", classId: "spinning", className: "Spinning" };
+    if (lower.includes("fitdance") || lower.includes("dança") || lower.includes("danca")) return { type: "CANCEL_CLASS", classId: "fitdance", className: "FitDance" };
+    if (lower.includes("funcional")) return { type: "CANCEL_CLASS", classId: "funcional", className: "Treino Funcional" };
+  }
+
+  const isBooking = lower.includes("agenda") || lower.includes("marca") || lower.includes("reserva") || lower.includes("quero fazer") || lower.includes("inscrever") || lower.includes("coloca meu nome");
+
+  if (isBooking) {
+    let classId = "";
+    let className = "";
+    let defaultTimes: string[] = [];
+
+    if (lower.includes("pilates")) { classId = "pilates"; className = "Pilates"; defaultTimes = ["07:00", "10:00", "18:00"]; }
+    else if (lower.includes("spinning") || lower.includes("bike")) { classId = "spinning"; className = "Spinning"; defaultTimes = ["06:30", "12:00", "19:30"]; }
+    else if (lower.includes("fitdance") || lower.includes("dança") || lower.includes("danca")) { classId = "fitdance"; className = "FitDance"; defaultTimes = ["11:00", "19:00"]; }
+    else if (lower.includes("funcional")) { classId = "funcional"; className = "Treino Funcional"; defaultTimes = ["07:30", "17:30", "18:30"]; }
+
+    if (classId) {
+      let selectedTime = defaultTimes[0];
+      for (const t of defaultTimes) {
+        if (lower.includes(t) || lower.includes(t.replace(":", "h"))) {
+          selectedTime = t;
+          break;
+        }
+      }
+      return { type: "BOOK_CLASS", classId, time: selectedTime, className };
+    }
+  }
+
+  return null;
+}
+
+async function processVicActionInDatabase(action: any, userId?: string) {
+  if (!action || !userId) return null;
+  try {
+    if (action.type === "BOOK_CLASS" && action.classId && action.time) {
+      const bookingId = `book-${Date.now()}`;
+      await BookedClass.findOneAndUpdate(
+        { userId, classId: action.classId },
+        { 
+          id: bookingId, 
+          userId, 
+          classId: action.classId, 
+          className: action.className || CLASS_NAMES[action.classId] || action.classId, 
+          time: action.time, 
+          bookedAt: new Date() 
+        },
+        { upsert: true, new: true }
+      );
+      return { 
+        ...action, 
+        bookingId, 
+        status: "success", 
+        statusMessage: `Reserva confirmada na aula de ${action.className} às ${action.time}!` 
+      };
+    } else if (action.type === "CANCEL_CLASS" && action.classId) {
+      await BookedClass.deleteOne({ userId, classId: action.classId });
+      return { ...action, status: "success", statusMessage: `Reserva cancelada com sucesso.` };
+    }
+  } catch (error) {
+    console.error("⚠️ Erro ao gravar agendamento da Vic no MongoDB:", error);
+  }
+  return null;
+}
+
+async function saveChatMessageToDb(sessionId: string | undefined, userId: string | undefined, role: string, content: string, action: any) {
+  if (!sessionId || !userId || !content) return;
+  try {
+    const msgId = "msg-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
+    await ChatMessage.create({ id: msgId, sessionId, userId, role, content, action, timestamp: new Date() });
+
+    if (role === "user") {
+      const titleSnippet = content.length > 25 ? content.substring(0, 25) + "..." : content;
+      await ChatSession.updateOne({ id: sessionId, title: "Nova conversa com a Vic" }, { title: titleSnippet });
+    }
+  } catch (err) {
+    console.error("⚠️ Erro ao salvar mensagem no MongoDB:", err);
+  }
+}
+
+// ============================================================
 // ENDPOINTS DE AUTENTICAÇÃO E USUÁRIOS
 // ============================================================
 
 app.get("/api/users", async (_req: Request, res: Response) => {
   try {
-    if (mongoose.connection.readyState !== 1) {
-      return res.json([]);
-    }
+    if (mongoose.connection.readyState !== 1) return res.json([]);
     const users = await User.find().sort({ createdAt: -1 });
     return res.json(users);
   } catch (error) {
@@ -238,26 +327,18 @@ app.post("/api/auth/register", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Preencha todos os campos obrigatórios." });
     }
 
-    // 1. Verifica se a conexão com o MongoDB está ativa
     if (mongoose.connection.readyState !== 1) {
-      console.warn("⚠️ Tentativa de cadastro com MongoDB desconectado.");
       return res.status(503).json({ 
         error: "O banco de dados ainda está inicializando. Aguarde alguns segundos e tente novamente." 
       });
     }
 
-    // 2. Checar se e-mail ou matrícula já existem
     const existingEmail = await User.findOne({ email });
-    if (existingEmail) {
-      return res.status(400).json({ error: "E-mail já cadastrado." });
-    }
+    if (existingEmail) return res.status(400).json({ error: "E-mail já cadastrado." });
 
     const existingMatricula = await User.findOne({ matricula });
-    if (existingMatricula) {
-      return res.status(400).json({ error: "Matrícula já cadastrada." });
-    }
+    if (existingMatricula) return res.status(400).json({ error: "Matrícula já cadastrada." });
 
-    // 3. Gera o username base e garante unicidade (.fit)
     let finalUsername = generateFitUsername(fullName);
     let userExists = await User.findOne({ username: finalUsername });
 
@@ -270,7 +351,6 @@ app.post("/api/auth/register", async (req: Request, res: Response) => {
 
     const id = "user-" + Date.now();
 
-    // 4. Salva o usuário no MongoDB Atlas
     const newUser = await User.create({
       id,
       fullName,
@@ -284,20 +364,15 @@ app.post("/api/auth/register", async (req: Request, res: Response) => {
       matricula,
     });
 
-    console.log(`✅ Novo usuário cadastrado: ${newUser.username} (${newUser.email})`);
     return res.status(201).json(newUser);
 
   } catch (error: any) {
-    console.error("❌ Erro ao cadastrar usuário:", error?.message || error);
-
-    // Trata erro de duplicidade do MongoDB se passar da validação manual
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern || {})[0];
       if (field === "email") return res.status(400).json({ error: "E-mail já cadastrado." });
       if (field === "matricula") return res.status(400).json({ error: "Matrícula já cadastrada." });
       if (field === "username") return res.status(400).json({ error: "Nome de usuário em uso." });
     }
-
     return res.status(500).json({ error: "Erro interno ao cadastrar usuário." });
   }
 });
@@ -316,9 +391,7 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
       password,
     });
 
-    if (!user) {
-      return res.status(401).json({ error: "Credenciais inválidas." });
-    }
+    if (!user) return res.status(401).json({ error: "Credenciais inválidas." });
 
     return res.json({ user });
   } catch (error) {
@@ -332,42 +405,10 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
 
 app.get("/api/classes", async (_req: Request, res: Response) => {
   const classesList = [
-    {
-      id: "pilates",
-      name: "Pilates",
-      category: "Flexibilidade & Core",
-      days: "Seg / Qua / Sex",
-      description: "Fortalecimento do core, postura e flexibilidade.",
-      iconName: "Activity",
-      slots: ["07:00", "10:00", "18:00"],
-    },
-    {
-      id: "fitdance",
-      name: "FitDance",
-      category: "Ritmo & Queima",
-      days: "Seg / Qua",
-      description: "Gasto calórico elevado com coreografias dinâmicas.",
-      iconName: "Music",
-      slots: ["11:00", "19:00"],
-    },
-    {
-      id: "spinning",
-      name: "Spinning",
-      category: "Cardio Alta Intensidade",
-      days: "Ter / Qui",
-      description: "Treino aeróbico de alta intensidade em bike indoor.",
-      iconName: "Bike",
-      slots: ["06:30", "12:00", "19:30"],
-    },
-    {
-      id: "funcional",
-      name: "Treino Funcional",
-      category: "Condicionamento Total",
-      days: "Ter / Qui",
-      description: "Exercícios dinâmicos para força, agilidade e resistência.",
-      iconName: "Dumbbell",
-      slots: ["07:30", "17:30", "18:30"],
-    },
+    { id: "pilates", name: "Pilates", category: "Flexibilidade & Core", days: "Seg / Qua / Sex", description: "Fortalecimento do core, postura e flexibilidade.", iconName: "Activity", slots: ["07:00", "10:00", "18:00"] },
+    { id: "fitdance", name: "FitDance", category: "Ritmo & Queima", days: "Seg / Qua", description: "Gasto calórico elevado com coreografias dinâmicas.", iconName: "Music", slots: ["11:00", "19:00"] },
+    { id: "spinning", name: "Spinning", category: "Cardio Alta Intensidade", days: "Ter / Qui", description: "Treino aeróbico de alta intensidade em bike indoor.", iconName: "Bike", slots: ["06:30", "12:00", "19:30"] },
+    { id: "funcional", name: "Treino Funcional", category: "Condicionamento Total", days: "Ter / Qui", description: "Exercícios dinâmicos para força, agilidade e resistência.", iconName: "Dumbbell", slots: ["07:30", "17:30", "18:30"] },
   ];
 
   try {
@@ -376,10 +417,7 @@ app.get("/api/classes", async (_req: Request, res: Response) => {
         classesList.map(async (cls) => {
           const slotsWithSpots = await Promise.all(
             cls.slots.map(async (time) => {
-              const bookedCount = await BookedClass.countDocuments({
-                classId: cls.id,
-                time,
-              });
+              const bookedCount = await BookedClass.countDocuments({ classId: cls.id, time });
               const totalSpots = 30;
               return {
                 time,
@@ -389,7 +427,6 @@ app.get("/api/classes", async (_req: Request, res: Response) => {
               };
             })
           );
-
           return { ...cls, slots: slotsWithSpots };
         })
       );
@@ -398,28 +435,14 @@ app.get("/api/classes", async (_req: Request, res: Response) => {
 
     const fallbackClasses = classesList.map((cls) => ({
       ...cls,
-      slots: cls.slots.map((t) => ({
-        time: t,
-        totalSpots: 30,
-        bookedSpots: 0,
-        availableSpots: 30,
-      })),
+      slots: cls.slots.map((t) => ({ time: t, totalSpots: 30, bookedSpots: 0, availableSpots: 30 })),
     }));
-
     return res.json(fallbackClasses);
   } catch (error: any) {
-    console.error("⚠️ Erro na rota /api/classes:", error?.message || error);
-
     const fallbackClasses = classesList.map((cls) => ({
       ...cls,
-      slots: cls.slots.map((t) => ({
-        time: t,
-        totalSpots: 30,
-        bookedSpots: 0,
-        availableSpots: 30,
-      })),
+      slots: cls.slots.map((t) => ({ time: t, totalSpots: 30, bookedSpots: 0, availableSpots: 30 })),
     }));
-
     return res.json(fallbackClasses);
   }
 });
@@ -440,7 +463,7 @@ app.post("/api/classes/book", async (req: Request, res: Response) => {
 
     await BookedClass.findOneAndUpdate(
       { userId, classId },
-      { id: bookingId, userId, classId, className: className || "", time, bookedAt: new Date() },
+      { id: bookingId, userId, classId, className: className || CLASS_NAMES[classId] || classId, time, bookedAt: new Date() },
       { upsert: true, new: true }
     );
 
@@ -463,7 +486,6 @@ app.post("/api/classes/cancel", async (req: Request, res: Response) => {
     }
 
     const result = await BookedClass.deleteOne({ userId, classId });
-
     if (result.deletedCount === 0) {
       return res.status(400).json({ error: "Nenhum agendamento encontrado para cancelar." });
     }
@@ -474,7 +496,6 @@ app.post("/api/classes/cancel", async (req: Request, res: Response) => {
   }
 });
 
-// Suporte para ambas as estruturas de rota de agendamentos
 app.get(["/api/users/:userId/bookings", "/api/classes/booked/:userId"], async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
@@ -484,21 +505,9 @@ app.get(["/api/users/:userId/bookings", "/api/classes/booked/:userId"], async (r
     }
     return res.json([]);
   } catch (error) {
-    console.error("❌ Erro ao buscar agendamentos do usuário:", error);
     return res.status(200).json([]);
   }
 });
-
-// ============================================================
-// CONFIGURAÇÃO DO GROQ CLIENT & FERRAMENTAS DE IA
-// ============================================================
-
-const apiKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
-let groq: Groq | null = null;
-
-if (process.env.GROQ_API_KEY) {
-  groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-}
 
 // ============================================================
 // HEALTH ENDPOINT
@@ -509,7 +518,7 @@ app.get("/api/health", (_req: Request, res: Response) => {
 });
 
 // ============================================================
-// VIC CHAT ASSISTANT ENDPOINT (COM TRATAMENTO ROBUSTO DE ERROS)
+// VIC CHAT ASSISTANT ENDPOINT (IA + AGENDAMENTO MONGO ATLAS)
 // ============================================================
 
 app.post("/api/vic/chat", async (req: Request, res: Response) => {
@@ -520,92 +529,78 @@ app.post("/api/vic/chat", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Mensagem não informada." });
     }
 
-    // 1. Deteta intenções diretas de agendamento/cancelamento (Pilates, Spinning, etc.)
+    // 1. Processa agendamento/cancelamento no MongoDB se a intenção for clara
+    let executedAction: any = null;
     const detectedAction = parseBookingIntent(message);
     if (detectedAction && userId && mongoose.connection.readyState === 1) {
-      await processVicActionInDatabase(detectedAction, userId);
+      executedAction = await processVicActionInDatabase(detectedAction, userId);
     }
 
     // 2. Busca o perfil e contexto do aluno no MongoDB
-    let userContext = "Aluno visitante.";
+    let userContext = "Aluno participante da MoveFIT.";
     if (mongoose.connection.readyState === 1 && userId) {
-      const user = await User.findOne({ id: userId });
+      const user = await User.findOne({ $or: [{ id: userId }, { _id: userId }] });
       if (user) {
-        userContext = `Nome: ${user.fullName}, Nível: ${user.trainingLevel}, Obs Médicas: ${user.medicalNotes}`;
+        userContext = `Nome: ${user.fullName}, Nível: ${user.trainingLevel}, Restrições: ${user.medicalNotes}`;
       }
     }
 
-    // 3. Verifica a chave de API do Groq / Gemini
+    // 3. Monta a resposta de confirmação se um agendamento direto ocorreu
+    let replyText = "";
+    if (executedAction && executedAction.type === "BOOK_CLASS") {
+      replyText = `Com certeza! Agendei a sua aula de ${executedAction.className} às ${executedAction.time} com sucesso! 🏋️‍♀️`;
+    } else if (executedAction && executedAction.type === "CANCEL_CLASS") {
+      replyText = `Prontinho! Cancelei a sua reserva na aula de ${executedAction.className}.`;
+    }
+
+    // 4. Se não houver resposta de agendamento direto, consulta o modelo Groq / Gemini
     const groqKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
 
-    // Se o agendamento direto funcionou e não há chave de IA ativa no Render
-    if (!groqKey) {
-      let fallbackText = "Oi! Sou a Vic 🏋️‍♀️. ";
-      if (detectedAction?.type === "BOOK_CLASS") {
-        fallbackText += `Com certeza! Agendei sua aula de ${detectedAction.className} às ${detectedAction.time}. Te vejo lá! 💪`;
-      } else if (detectedAction?.type === "CANCEL_CLASS") {
-        fallbackText += `Cancelei a sua reserva na aula de ${detectedAction.className} com sucesso!`;
-      } else {
-        fallbackText += "Como posso ajudar no seu treino hoje?";
-      }
-
-      if (sessionId && userId) {
-        await saveChatMessageToDb(sessionId, userId, "assistant", fallbackText, detectedAction);
-      }
-
-      return res.json({ response: fallbackText, action: detectedAction });
-    }
-
-    // 4. Chamada via Fetch para o Groq (garantida e sem dependência estrita do SDK)
-    const systemPrompt = `Você é a Vic, uma personal trainer virtual em 3D e assistente oficial da academia MoveFIT.
-Personalidade: extremamente motivadora, descontraída e acolhedora.
+    if (!replyText && groqKey) {
+      try {
+        const systemPrompt = `Você é a Vic, personal trainer virtual em 3D da academia MoveFIT.
+Personalidade: motivadora, descontraída e acolhedora.
 Contexto do aluno: ${userContext}`;
 
-    const aiResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${groqKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: message },
-        ],
-      }),
-    });
+        const aiResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${groqKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: message },
+            ],
+          }),
+        });
 
-    let replyText = "";
-    if (aiResponse.ok) {
-      const data = await aiResponse.json();
-      replyText = data.choices[0]?.message?.content || "";
-    }
-
-    // Se a IA gerou resposta mas houve um agendamento direto por texto, reforça a confirmação
-    if (!replyText) {
-      if (detectedAction?.type === "BOOK_CLASS") {
-        replyText = `Com certeza! Agendei a sua aula de ${detectedAction.className} às ${detectedAction.time}. Te vejo lá! 🏋️‍♀️`;
-      } else if (detectedAction?.type === "CANCEL_CLASS") {
-        replyText = `Prontinho! Cancelei a sua vaga na aula de ${detectedAction.className}.`;
-      } else {
-        replyText = "Bora focar nos treinos! Como posso te ajudar hoje?";
+        if (aiResponse.ok) {
+          const data = await aiResponse.json();
+          replyText = data.choices[0]?.message?.content || "";
+        }
+      } catch (err) {
+        console.warn("⚠️ Exceção ao consultar API do Groq:", err);
       }
     }
 
-    // 5. Salva a resposta no histórico do MongoDB
-    if (sessionId && userId) {
-      await saveChatMessageToDb(sessionId, userId, "assistant", replyText, detectedAction);
+    if (!replyText) {
+      replyText = "Bora focar nos treinos! Como posso ajudar você hoje?";
     }
 
-    return res.json({ response: replyText, action: detectedAction });
+    // 5. Salva a resposta no histórico do MongoDB Atlas
+    if (sessionId && userId && mongoose.connection.readyState === 1) {
+      await saveChatMessageToDb(sessionId, userId, "assistant", replyText, executedAction);
+    }
+
+    return res.json({ response: replyText, action: executedAction });
 
   } catch (error: any) {
-    console.error("❌ Erro no chat da Vic:", error?.message || error);
-
-    // Se houver exceção inesperada, tenta pelo menos confirmar se houve agendamento
+    console.error("❌ Erro no endpoint do chat da Vic:", error?.message || error);
     return res.status(200).json({
-      response: "Recebi seu pedido! Verifique na aba de agendamentos se a sua vaga já está confirmada.",
+      response: "Não consegui concluir o agendamento no momento. Tente novamente em instantes.",
       action: null,
     });
   }
@@ -688,7 +683,6 @@ app.get("/api/vic/messages/:sessionId", async (req: Request, res: Response) => {
 // ============================================================
 
 async function startServer() {
-  // Conecta ao MongoDB antes de abrir a porta HTTP
   await connectDB();
 
   if (process.env.NODE_ENV !== "production") {
