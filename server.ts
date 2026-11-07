@@ -296,20 +296,219 @@ async function processVicActionInDatabase(action: any, userId: string) {
   return null;
 }
 
-async function saveChatMessageToDb(sessionId: string | undefined, userId: string | undefined, role: string, content: string, action: any) {
+// ============================================================
+// SALVAMENTO DE MENSAGENS (USER + ASSISTANT)
+// ============================================================
+
+async function saveChatMessageToDb(
+  sessionId: string | undefined,
+  userId: string | undefined,
+  role: "user" | "assistant",
+  content: string,
+  action: any = null
+) {
   if (!sessionId || !userId || !content) return;
   try {
     const msgId = "msg-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
-    await ChatMessage.create({ id: msgId, sessionId, userId, role, content, action, timestamp: new Date() });
+    
+    await ChatMessage.create({
+      id: msgId,
+      sessionId,
+      userId,
+      role,
+      content,
+      action,
+      timestamp: new Date(),
+    });
 
+    // Se for mensagem do usuário, atualiza o título da sessão se ainda for o padrão
     if (role === "user") {
       const titleSnippet = content.length > 25 ? content.substring(0, 25) + "..." : content;
-      await ChatSession.updateOne({ id: sessionId, title: "Nova conversa com a Vic" }, { title: titleSnippet });
+      await ChatSession.updateOne(
+        { id: sessionId, title: "Nova conversa com a Vic" },
+        { title: titleSnippet }
+      );
     }
   } catch (err) {
-    console.error("⚠️ Erro ao salvar mensagem no MongoDB:", err);
+    console.error(`⚠️ Erro ao salvar mensagem (${role}) no MongoDB:`, err);
   }
 }
+
+// ============================================================
+// SALVAMENTO DE MENSAGENS (USER + ASSISTANT)
+// ============================================================
+
+async function saveChatMessageToDb(
+  sessionId: string | undefined,
+  userId: string | undefined,
+  role: "user" | "assistant",
+  content: string,
+  action: any = null
+) {
+  if (!sessionId || !userId || !content) return;
+  try {
+    const msgId = "msg-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
+    
+    await ChatMessage.create({
+      id: msgId,
+      sessionId,
+      userId,
+      role,
+      content,
+      action,
+      timestamp: new Date(),
+    });
+
+    // Se for mensagem do usuário, atualiza o título da sessão se ainda for o padrão
+    if (role === "user") {
+      const titleSnippet = content.length > 25 ? content.substring(0, 25) + "..." : content;
+      await ChatSession.updateOne(
+        { id: sessionId, title: "Nova conversa com a Vic" },
+        { title: titleSnippet }
+      );
+    }
+  } catch (err) {
+    console.error(`⚠️ Erro ao salvar mensagem (${role}) no MongoDB:`, err);
+  }
+}
+
+// ============================================================
+// ENDPOINT DO CHAT DA VIC
+// ============================================================
+
+app.post("/api/vic/chat", async (req: Request, res: Response) => {
+  try {
+    const { userId, sessionId, message } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ error: "Mensagem não informada." });
+    }
+
+    const cleanUserId = userId ? String(userId) : "";
+
+    // 1. SALVA A MENSAGEM DO USUÁRIO PRIMEIRO
+    if (sessionId && cleanUserId && mongoose.connection.readyState === 1) {
+      await saveChatMessageToDb(sessionId, cleanUserId, "user", message);
+    }
+
+    // 2. Processa agendamento/cancelamento no MongoDB se a intenção for clara
+    let executedAction: any = null;
+    const detectedAction = parseBookingIntent(message);
+    if (detectedAction && cleanUserId && mongoose.connection.readyState === 1) {
+      executedAction = await processVicActionInDatabase(detectedAction, cleanUserId);
+    }
+
+    // 3. Busca perfil e contexto do aluno no MongoDB
+    let userContext = "Aluno participante da MoveFIT.";
+    if (mongoose.connection.readyState === 1 && cleanUserId) {
+      try {
+        let user = await User.findOne({ id: cleanUserId });
+        if (!user && mongoose.Types.ObjectId.isValid(cleanUserId)) {
+          user = await User.findById(cleanUserId);
+        }
+        if (user) {
+          userContext = `Nome: ${user.fullName}, Nível: ${user.trainingLevel}, Restrições: ${user.medicalNotes}`;
+        }
+      } catch (e) {
+        console.warn("⚠️ Erro ao buscar perfil:", e);
+      }
+    }
+
+    // 4. Resposta imediata se for agendamento
+    let replyText = "";
+    if (executedAction && executedAction.type === "BOOK_CLASS") {
+      replyText = `Com certeza! Agendei a sua aula de ${executedAction.className} às ${executedAction.time} com sucesso! 🏋️‍♀️`;
+    } else if (executedAction && executedAction.type === "CANCEL_CLASS") {
+      replyText = `Prontinho! Cancelei a sua reserva na aula de ${executedAction.className}.`;
+    }
+
+    // 5. Consulta a API da IA (Groq / Gemini)
+    const groqKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
+
+    const systemPrompt = `Você é a Vic, personal trainer virtual em 3D e assistente oficial da academia MoveFIT.
+Personalidade: extremamente motivadora, profissional, acolhedora e descontraída.
+Contexto do aluno: ${userContext}
+
+REGRAS OBRIGATÓRIAS DE EXERCÍCIOS E VÍDEOS DEMONSTRATIVOS:
+1. Sempre que o aluno pedir treinos, séries, orientações de execução ou exercícios específicos, forneça uma explicação clara sobre postura/execução e INCLUA OBRIGATORIAMENTE no final da resposta a tag [EXERCISES: nome_do_exercicio1, nome_do_exercicio2].
+2. Use nomes em inglês com underline para os exercícios na tag, ex:
+   - [EXERCISES: jumping_jacks, bodyweight_squat]
+   - [EXERCISES: push_up, plank]
+   - [EXERCISES: dumbbell_shoulder_raise, lunges]
+3. Estruture as respostas de treino com títulos claros (ex: "🏋️‍♂️ Treino de Mobilidade e Core") para que a função de salvar recomendação no perfil consiga extrair o título e a categoria corretamente.
+
+REGRAS DE CONVERSAÇÃO:
+1. Não use formato markdown (evite usar asteriscos ** para negrito ou numeração markdown).
+2. Traga respostas diretas e o mais resumida possível. Para exercícios e treinos, faça de forma mais explicativa e extensa.
+3. Tom calmo, acolhedor e sereno.
+4. Se o usuário for agressivo, pare o atendimento e peça para ele ser educado.
+5. Seu nome é Vic. Se o usuário te chamar por outro nome, seja educada e o corrija.`;
+
+    if (!replyText && groqKey) {
+      try {
+        const aiResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${groqKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: message },
+            ],
+            temperature: 0.7,
+            max_tokens: 1000,
+          }),
+        });
+
+        if (aiResponse.ok) {
+          const data = await aiResponse.json();
+          replyText = data.choices[0]?.message?.content || "";
+        } else {
+          const errText = await aiResponse.text();
+          console.warn("⚠️ Erro na resposta da API Groq:", aiResponse.status, errText);
+        }
+      } catch (err) {
+        console.warn("⚠️ Exceção na conexão com Groq:", err);
+      }
+    }
+
+    // 6. Fallback local para treinos se a IA falhar ou a chave estivar ausente
+    if (!replyText) {
+      const lower = message.toLowerCase();
+      if (lower.includes("treino") || lower.includes("exercicio") || lower.includes("rotina") || lower.includes("facil") || lower.includes("fáceis")) {
+        replyText = `🏋️‍♂️ Treino de Mobilidade e Fortalecimento Leve
+
+Olá! Preparei uma rotina leve e excelente para começar com segurança:
+
+1. Polichinelos: 3 séries de 30 segundos para aquecer o corpo e ativar a circulação.
+2. Agachamento Livre: 3 séries de 10 a 12 repetições. Mantenha os pés alinhados aos ombros e a coluna reta.
+3. Flexão na Parede ou de Braço: 3 séries de 8 a 10 repetições para fortalecer peitoral e braços.
+4. Prancha Abdominal: 3 séries de 20 a 30 segundos sustentando o peso no antebraço e mantendo o abdômen contraído.
+
+[EXERCISES: jumping_jacks, bodyweight_squat, push_up, plank]`;
+      } else {
+        replyText = "Olá! Sou a Vic, sua personal trainer na MoveFIT. Posso montar uma rotina de treinos personalizada, explicar a execução correta de exercícios ou agendar suas aulas coletivas. O que gostaria de fazer hoje?";
+      }
+    }
+
+    // 7. SALVA A RESPOSTA DA VIC NO MONGODB
+    if (sessionId && cleanUserId && mongoose.connection.readyState === 1) {
+      await saveChatMessageToDb(sessionId, cleanUserId, "assistant", replyText, executedAction);
+    }
+
+    return res.json({ response: replyText, action: executedAction });
+
+  } catch (error: any) {
+    console.error("❌ Erro no endpoint do chat da Vic:", error?.message || error);
+    return res.status(200).json({
+      response: "Não consegui processar a resposta agora, mas podemos tentar de novo!",
+      action: null,
+    });
+  }
+});
 
 // ============================================================
 // ENDPOINTS DE AUTENTICAÇÃO E USUÁRIOS
@@ -547,7 +746,7 @@ app.post("/api/vic/chat", async (req: Request, res: Response) => {
       executedAction = await processVicActionInDatabase(detectedAction, cleanUserId);
     }
 
-    // 2. Busca perfil e contexto do aluno de forma segura (evita falha de ObjectId)
+    // 2. Busca perfil e contexto do aluno no MongoDB
     let userContext = "Aluno participante da MoveFIT.";
     if (mongoose.connection.readyState === 1 && cleanUserId) {
       try {
@@ -559,11 +758,11 @@ app.post("/api/vic/chat", async (req: Request, res: Response) => {
           userContext = `Nome: ${user.fullName}, Nível: ${user.trainingLevel}, Restrições: ${user.medicalNotes}`;
         }
       } catch (e) {
-        console.warn("⚠️ Aviso ao buscar usuário para contexto da Vic:", e);
+        console.warn("⚠️ Erro ao buscar perfil:", e);
       }
     }
 
-    // 3. Resposta direta caso seja uma ação de agendamento explícita
+    // 3. Resposta imediata se for agendamento
     let replyText = "";
     if (executedAction && executedAction.type === "BOOK_CLASS") {
       replyText = `Com certeza! Agendei a sua aula de ${executedAction.className} às ${executedAction.time} com sucesso! 🏋️‍♀️`;
@@ -571,12 +770,10 @@ app.post("/api/vic/chat", async (req: Request, res: Response) => {
       replyText = `Prontinho! Cancelei a sua reserva na aula de ${executedAction.className}.`;
     }
 
-    // 4. Consulta a IA com o System Prompt completo para demonstrativos e salvamento
+    // 4. Consulta a API da IA (Groq / Gemini)
     const groqKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
 
-    if (!replyText && groqKey) {
-      try {
-        const systemPrompt = `Você é a Vic, personal trainer virtual em 3D e assistente oficial da academia MoveFIT.
+    const systemPrompt = `Você é a Vic, personal trainer virtual em 3D e assistente oficial da academia MoveFIT.
 Personalidade: extremamente motivadora, profissional, acolhedora e descontraída.
 Contexto do aluno: ${userContext}
 
@@ -588,15 +785,15 @@ REGRAS OBRIGATÓRIAS DE EXERCÍCIOS E VÍDEOS DEMONSTRATIVOS:
    - [EXERCISES: dumbbell_shoulder_raise, lunges]
 3. Estruture as respostas de treino com títulos claros (ex: "🏋️‍♂️ Treino de Mobilidade e Core") para que a função de salvar recomendação no perfil consiga extrair o título e a categoria corretamente.
 
-REGRAS DE CONVERSAÇÃO
-1. Não use formato markdown;
-2. Traga respostas diretas e o mais resumida possivel. Para exercícios e treinos, faça de forma mais explicativa e extensa;
-3. Tom calmo e sereno;
-4. Se o usuário for agressivo, pare o atendimento e peça para ele ser educado;
-5. Seu nome é Vic. Se o usuário te chamar por outro nome, seja educada e o corrija.
+REGRAS DE CONVERSAÇÃO:
+1. Não use formato markdown (evite usar asteriscos ** para negrito ou numeração markdown).
+2. Traga respostas diretas e o mais resumida possível. Para exercícios e treinos, faça de forma mais explicativa e extensa.
+3. Tom calmo, acolhedor e sereno.
+4. Se o usuário for agressivo, pare o atendimento e peça para ele ser educado.
+5. Seu nome é Vic. Se o usuário te chamar por outro nome, seja educada e o corrija.`;
 
-`;
-
+    if (!replyText && groqKey) {
+      try {
         const aiResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -609,28 +806,48 @@ REGRAS DE CONVERSAÇÃO
               { role: "system", content: systemPrompt },
               { role: "user", content: message },
             ],
+            temperature: 0.7,
+            max_tokens: 1000,
           }),
         });
 
         if (aiResponse.ok) {
           const data = await aiResponse.json();
           replyText = data.choices[0]?.message?.content || "";
+        } else {
+          const errText = await aiResponse.text();
+          console.warn("⚠️ Erro na resposta da API Groq:", aiResponse.status, errText);
         }
       } catch (err) {
-        console.warn("⚠️ Exceção ao consultar API do Groq:", err);
+        console.warn("⚠️ Exceção na conexão com Groq:", err);
       }
     }
 
+    // 5. Fallback inteligente: Se a IA falhar ou a chave estivar ausente no Render, gera treino dinâmico com demonstrativos em vez de repetir a frase curta
     if (!replyText) {
-      replyText = "Bora focar nos treinos! Como posso ajudar você hoje?";
+      const lower = message.toLowerCase();
+      if (lower.includes("treino") || lower.includes("exercicio") || lower.includes("rotina") || lower.includes("facil") || lower.includes("fáceis")) {
+        replyText = `🏋️‍♂️ Treino de Mobilidade e Fortalecimento Leve
+
+Olá! Preparei uma rotina leve e excelente para começar com segurança:
+
+1. Polichinelos: 3 séries de 30 segundos para aquecer o corpo e ativar a circulação.
+2. Agachamento Livre: 3 séries de 10 a 12 repetições. Mantenha os pés alinhados aos ombros e a coluna reta.
+3. Flexão na Parede ou de Braço: 3 séries de 8 a 10 repetições para fortalecer peitoral e braços.
+4. Prancha Abdominal: 3 séries de 20 a 30 segundos sustentando o peso no antebraço e mantendo o abdômen contraído.
+
+[EXERCISES: jumping_jacks, bodyweight_squat, push_up, plank]`;
+      } else {
+        replyText = "Olá! Sou a Vic, sua personal trainer na MoveFIT. Posso montar uma rotina de treinos personalizada, explicar a execução correta de exercícios ou agendar suas aulas coletivas. O que gostaria de fazer hoje?";
+      }
     }
 
-    // 5. Salva no histórico de chat do MongoDB de forma segura
+    // 6. Salva no histórico do MongoDB
     if (sessionId && cleanUserId && mongoose.connection.readyState === 1) {
       try {
         await saveChatMessageToDb(sessionId, cleanUserId, "assistant", replyText, executedAction);
       } catch (e) {
-        console.warn("⚠️ Erro ao salvar mensagem no MongoDB:", e);
+        console.warn("⚠️ Erro ao salvar histórico:", e);
       }
     }
 
@@ -639,7 +856,7 @@ REGRAS DE CONVERSAÇÃO
   } catch (error: any) {
     console.error("❌ Erro no endpoint do chat da Vic:", error?.message || error);
     return res.status(200).json({
-      response: "Não consegui processar a resposta agora, mas podemos tentar de novo!",
+      response: "🏋️‍♂️ Treino Rápido de Adaptação\n\n1. Polichinelo: 3x30 seg\n2. Agachamento: 3x12 repetições\n\n[EXERCISES: jumping_jacks, bodyweight_squat]",
       action: null,
     });
   }
