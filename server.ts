@@ -60,8 +60,6 @@ async function startServer() {
   });
 }
 
-// Inicia a aplicação
-startServer();
 
 // ============================================================
 // MONGOOSE SCHEMAS & MODELS
