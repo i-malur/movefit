@@ -21,7 +21,11 @@ const mongoURI = process.env.MONGODB_URI;
 if (mongoURI) {
   mongoose
     .connect(mongoURI)
-    .then(() => console.log("✅ Banco de dados MongoDB conectado com sucesso!"))
+    .then(async () => {
+      console.log("✅ Banco de dados MongoDB conectado com sucesso!");
+      // O seed executa APENAS após a conexão estar concluída
+      await seedDatabase();
+    })
     .catch((err) => console.error("❌ Erro ao conectar ao MongoDB Atlas:", err));
 } else {
   console.warn("⚠️ MONGODB_URI não configurada nas variáveis de ambiente!");
