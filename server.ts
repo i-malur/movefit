@@ -38,28 +38,6 @@ async function connectDB() {
   }
 }
 
-// ============================================================
-// VITE / SERVIDOR DE PRODUÇÃO
-// ============================================================
-
-async function startServer() {
-  // Conecta ao MongoDB
-  await connectDB();
-
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (_req: Request, res: Response) => res.sendFile(path.join(distPath, "index.html")));
-  }
-
-  app.listen(PORT, () => {
-    console.log(`🚀 MoveFIT rodando na porta: ${PORT}`);
-  });
-}
-
 
 // ============================================================
 // MONGOOSE SCHEMAS & MODELS
@@ -771,6 +749,9 @@ app.get("/api/vic/messages/:sessionId", async (req: Request, res: Response) => {
 // ============================================================
 
 async function startServer() {
+  // Conecta ao MongoDB
+  await connectDB();
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
     app.use(vite.middlewares);
