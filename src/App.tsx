@@ -8,12 +8,12 @@ import { VicChatTab } from "./components/VicChatTab";
 import { ProfileTab } from "./components/ProfileTab";
 
 const DEFAULT_DEMO_USER: User = {
-  id: "user-demo-01",
-  fullName: "Maria Luiza Fernandes",
-  email: "marialuizafernandes384@gmail.com",
+  id: "user-demo-1",
+  fullName: "Maria Luiza Queiroz",
+  email: "maria@movefit.com",
   username: "marialuiza.fit",
   password: "Movefit@2026",
-  trainingLevel: "Intermediário",
+  trainingLevel: "Iniciante",
   medicalNotes: "Nenhuma",
   matricula: "MF-2026-001",
   createdAt: "2026-01-10T10:00:00Z",
@@ -48,7 +48,19 @@ export default function App() {
   const [bookedClasses, setBookedClasses] = useState<BookedClass[]>([]);
   const [activeTab, setActiveTab] = useState<"classes" | "vic" | "profile">("classes");
 
-  // Fetch das aulas sincronizadas com o backend SQLite
+  // ID limpo do utilizador atual (suporta id e _id do MongoDB Mongoose)
+  const activeUserId = currentUser?.id || (currentUser as any)?._id || "";
+
+  // Sincroniza o utilizador ativo no localStorage para não perder sessão no F5
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem("movefit_active_user", JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem("movefit_active_user");
+    }
+  }, [currentUser]);
+
+  // Fetch das aulas coletivas sincronizadas com o backend
   const fetchClassesFromBackend = useCallback(async () => {
     try {
       const res = await fetch("/api/classes");
@@ -59,53 +71,73 @@ export default function App() {
         }
       }
     } catch (error) {
-      // Caso a API não responda, mantém o estado das aulas sem quebrar o App
+      // Mantém fallback local em caso de oscilação
     }
   }, []);
 
-  // 1. Polling contínuo das aulas para manter as vagas em tempo real
+  // Fetch dos agendamentos do utilizador ativo diretamente do MongoDB Atlas
+  const fetchBookedClassesFromBackend = useCallback(async () => {
+    if (!activeUserId) {
+      setBookedClasses([]);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/users/${activeUserId}/bookings`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          // Normaliza os objetos recebidos da base de dados
+          const formattedBookings: BookedClass[] = data.map((b: any) => ({
+            bookingId: b.id || b.bookingId || `book-${Date.now()}`,
+            classId: b.classId,
+            className: b.className || b.classId,
+            time: b.time,
+            schedule: b.schedule || `${b.time}`,
+            duration: "50 minutos",
+            bookedAt: b.bookedAt || new Date().toISOString(),
+          }));
+          setBookedClasses(formattedBookings);
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao carregar agendamentos do MongoDB:", err);
+    }
+  }, [activeUserId]);
+
+  // Polling contínuo das vagas e agendamentos ao carregar a aplicação
   useEffect(() => {
     fetchClassesFromBackend();
+    fetchBookedClassesFromBackend();
+
     const interval = setInterval(() => {
       fetchClassesFromBackend();
+      fetchBookedClassesFromBackend();
     }, 4000);
-    return () => clearInterval(interval);
-  }, [fetchClassesFromBackend]);
 
-  // 2. Buscar usuários cadastrados no banco SQLite ao iniciar a aplicação
+    return () => clearInterval(interval);
+  }, [fetchClassesFromBackend, fetchBookedClassesFromBackend]);
+
+  // Buscar utilizadores registados do banco ao iniciar
   useEffect(() => {
     fetch("/api/users")
-      .then((res) => res.json())
+      .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
-        if (Array.isArray(data)) {
+        if (Array.isArray(data) && data.length > 0) {
           setRegisteredUsers(data);
         }
       })
-      .catch((err) => console.error("Erro ao carregar usuários do SQLite:", err));
+      .catch((err) => console.error("Erro ao carregar usuários:", err));
   }, []);
-
-  // 3. Carregar os agendamentos do usuário ativo diretamente do SQLite
-  useEffect(() => {
-    if (currentUser) {
-      fetch(`/api/classes/user/${currentUser.id}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (Array.isArray(data)) {
-            setBookedClasses(data);
-          }
-        })
-        .catch((err) => console.error("Erro ao carregar agendamentos do SQLite:", err));
-    } else {
-      setBookedClasses([]);
-    }
-  }, [currentUser]);
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
+    localStorage.setItem("movefit_active_user", JSON.stringify(user));
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
+    localStorage.removeItem("movefit_active_user");
     setActiveTab("classes");
   };
 
@@ -113,9 +145,7 @@ export default function App() {
     try {
       const response = await fetch("/api/auth/register", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fullName: newUser.fullName,
           email: newUser.email,
@@ -129,20 +159,19 @@ export default function App() {
       const data = await response.json();
 
       if (response.ok) {
-        // Adiciona o novo usuário retornado pelo SQLite (com id e username .fit criados)
         setRegisteredUsers((prev) => [...prev, data]);
-        // Seta o usuário recém-criado como usuário ativo para já entrar logado
         setCurrentUser(data);
+        localStorage.setItem("movefit_active_user", JSON.stringify(data));
       } else {
-        alert(data.error || "Erro ao realizar cadastro no servidor.");
+        alert(data.error || "Erro ao realizar cadastro.");
       }
     } catch (error) {
-      console.error("Erro ao enviar cadastro para o SQLite:", error);
-      alert("Não foi possível conectar ao servidor para salvar o cadastro.");
+      console.error("Erro ao cadastrar:", error);
+      alert("Não foi possível conectar ao servidor.");
     }
   };
 
-  // Agendamento sincronizado com backend SQLite + estado local
+  // Agendamento de aula sincronizado com o MongoDB Atlas
   const handleBookClass = (classId: string, time: string): { success: boolean; message: string } => {
     if (!currentUser) return { success: false, message: "É necessário estar autenticado." };
 
@@ -153,84 +182,59 @@ export default function App() {
         (classId === "treino-funcional" && c.id === "funcional")
     );
 
-    if (!targetClass) return { success: false, message: "Aula não encontrada." };
+    const className = targetClass ? targetClass.name : classId;
 
-    const alreadyBooked = bookedClasses.some(
-      (b) =>
-        (b.classId === targetClass.id ||
-          (targetClass.id === "funcional" && b.classId === "treino-funcional") ||
-          (targetClass.id === "treino-funcional" && b.classId === "funcional")) &&
-        b.time === time
-    );
-
-    if (alreadyBooked) {
-      return {
-        success: false,
-        message: `Você já está inscrito(a) na aula de ${targetClass.name} neste horário!`,
-      };
-    }
-
-    // Regista no servidor SQLite
+    // Regista no backend MongoDB
     fetch("/api/classes/book", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        userId: currentUser.id,
-        classId: targetClass.id,
+        userId: activeUserId,
+        classId,
+        className,
         time,
       }),
     })
-      .then(() => fetchClassesFromBackend())
-      .catch((err) => console.error("Erro ao sincronizar com backend:", err));
-
-    const newBooking: BookedClass = {
-      bookingId: `book-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      classId: targetClass.id,
-      className: targetClass.name,
-      days: targetClass.days,
-      time,
-      schedule: `${targetClass.days} • ${time}`,
-      duration: "50 minutos",
-      iconName: targetClass.iconName,
-      bookedAt: new Date().toISOString(),
-    };
-
-    setBookedClasses((prev) => [...prev, newBooking]);
+      .then(() => {
+        fetchClassesFromBackend();
+        fetchBookedClassesFromBackend();
+      })
+      .catch((err) => console.error("Erro ao agendar no servidor:", err));
 
     return {
       success: true,
-      message: `Vaga confirmada para ${targetClass.name} (${time})! Duração: 50 minutos.`,
+      message: `Vaga confirmada para ${className} (${time})! Duração: 50 minutos.`,
     };
   };
 
-  // Cancelamento sincronizado com backend SQLite + estado local
+  // Cancelamento de aula sincronizado com o MongoDB Atlas
   const handleCancelBooking = (bookingId: string) => {
     const booking = bookedClasses.find((b) => b.bookingId === bookingId);
-    if (!booking || !currentUser) return;
+    if (!booking || !activeUserId) return;
 
     fetch("/api/classes/cancel", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        userId: currentUser.id,
+        userId: activeUserId,
         classId: booking.classId,
-        time: booking.time,
       }),
     })
-      .then(() => fetchClassesFromBackend())
-      .catch((err) => console.error("Erro ao cancelar no backend:", err));
-
-    setBookedClasses((prev) => prev.filter((b) => b.bookingId !== bookingId));
+      .then(() => {
+        fetchClassesFromBackend();
+        fetchBookedClassesFromBackend();
+      })
+      .catch((err) => console.error("Erro ao cancelar agendamento:", err));
   };
 
-  const userSavedRecommendations = savedRecommendations.filter((r) => r.userId === currentUser?.id);
+  const userSavedRecommendations = savedRecommendations.filter((r) => r.userId === activeUserId);
 
   const handleSaveRecommendation = (recData: Omit<SavedRecommendation, "id" | "savedAt" | "userId">) => {
     if (!currentUser) return;
     const newRec: SavedRecommendation = {
       ...recData,
       id: `rec-${Date.now()}`,
-      userId: currentUser.id,
+      userId: activeUserId,
       savedAt: new Date().toLocaleString("pt-BR"),
     };
     setSavedRecommendations((prev) => [newRec, ...prev]);
@@ -244,6 +248,7 @@ export default function App() {
     if (!currentUser) return { success: false, message: "Nenhum usuário logado." };
     const updatedUser: User = { ...currentUser, ...updatedData };
     setCurrentUser(updatedUser);
+    localStorage.setItem("movefit_active_user", JSON.stringify(updatedUser));
     setRegisteredUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
     return { success: true, message: "Perfil atualizado com sucesso!" };
   };
