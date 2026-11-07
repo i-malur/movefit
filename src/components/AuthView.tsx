@@ -14,6 +14,8 @@ import {
   Building2,
   Info,
   ArrowRight,
+  MapPin,
+  Phone,
 } from "lucide-react";
 import { User, TrainingLevel } from "../types";
 
@@ -348,11 +350,25 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </div>
               )}
 
-              <div className="bg-[#1E1B24] border border-[#3E374C] rounded-xl p-3 text-xs text-zinc-300 flex items-start gap-2.5">
-                <Building2 className="w-4 h-4 text-[#00C0A3] shrink-0 mt-0.5" />
-                <p className="leading-relaxed">
-                  <strong className="text-white">Ainda não é aluno MoveFIT?</strong> É necessário comparecer <strong>presencialmente à academia</strong> para realizar sua matrícula oficial e obter seu número de acesso.
-                </p>
+              {/* BALÃO INFORMATIVO COM ENDEREÇO E TELEFONE DA MOVEFIT */}
+              <div className="bg-[#1E1B24] border border-[#3E374C] rounded-xl p-3.5 text-xs text-zinc-300 space-y-2">
+                <div className="flex items-start gap-2.5">
+                  <Building2 className="w-4 h-4 text-[#00C0A3] shrink-0 mt-0.5" />
+                  <p className="leading-relaxed">
+                    <strong className="text-white">Ainda não é aluno MoveFIT?</strong> É necessário comparecer <strong>presencialmente à academia</strong> para realizar sua matrícula oficial e obter seu número de acesso.
+                  </p>
+                </div>
+                
+                <div className="pt-2 border-t border-[#3E374C]/60 space-y-1.5 text-[11px] text-[#B0A8B9]">
+                  <div className="flex items-start gap-2">
+                    <MapPin className="w-3.5 h-3.5 text-[#00C0A3] shrink-0 mt-0.5" />
+                    <span>Rua Frederico Grotte, 322 - Jardim São Luís, São Paulo - SP, 05818-270</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-3.5 h-3.5 text-[#00C0A3] shrink-0" />
+                    <span>(11) 4002-8922</span>
+                  </div>
+                </div>
               </div>
 
               <div>

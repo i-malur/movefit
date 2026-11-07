@@ -1,739 +1,292 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { GymClass, BookedClass } from "../types";
 import {
+  Calendar,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  MapPin,
+  Phone,
+  Sparkles,
+  ChevronRight,
   Activity,
   Bike,
   Music,
   Dumbbell,
-  Clock,
-  Calendar,
-  Users,
-  CheckCircle2,
-  AlertCircle,
   Trash2,
-  Plus,
-  Info,
-  CalendarDays,
-  LayoutGrid,
+  CalendarCheck2,
 } from "lucide-react";
 
 interface ClassesTabProps {
-  classes: GymClass[];
+  classesList: GymClass[];
   bookedClasses: BookedClass[];
-  onBookClass: (classId: string, time: string) => { success: boolean; message: string };
+  onBookClass: (classId: string, time: string, className: string) => Promise<{ success: boolean; message: string }>;
   onCancelBooking: (bookingId: string) => void;
   onNavigateToVic: () => void;
-  onRefreshClasses?: () => void;
+  userMatricula: string;
 }
-
-export const getSlotEndTime = (startTime: string): string => {
-  const [h, m] = startTime.split(":").map(Number);
-  const totalMin = h * 60 + m + 50;
-  const endH = Math.floor(totalMin / 60);
-  const endM = totalMin % 60;
-  return `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
-};
-
-interface ScheduleItem {
-  classId: string;
-  className: string;
-  category: string;
-  room: string;
-  startTime: string;
-  endTime: string;
-  iconName: "Activity" | "Bike" | "Music" | "Dumbbell";
-}
-
-const WEEKDAYS_SCHEDULE: {
-  dayKey: "Seg" | "Ter" | "Qua" | "Qui" | "Sex";
-  dayName: string;
-  daySubtitle: string;
-  items: ScheduleItem[];
-}[] = [
-  {
-    dayKey: "Seg",
-    dayName: "Segunda-feira",
-    daySubtitle: "Pilates & FitDance",
-    items: [
-      { classId: "pilates", className: "Pilates", category: "Flexibilidade & Core", room: "Sala Zen 01", startTime: "07:00", endTime: "07:50", iconName: "Activity" },
-      { classId: "pilates", className: "Pilates", category: "Flexibilidade & Core", room: "Sala Zen 01", startTime: "10:00", endTime: "10:50", iconName: "Activity" },
-      { classId: "fitdance", className: "FitDance", category: "Ritmo & Queima", room: "Studio Dança", startTime: "11:00", endTime: "11:50", iconName: "Music" },
-      { classId: "pilates", className: "Pilates", category: "Flexibilidade & Core", room: "Sala Zen 01", startTime: "18:00", endTime: "18:50", iconName: "Activity" },
-      { classId: "fitdance", className: "FitDance", category: "Ritmo & Queima", room: "Studio Dança", startTime: "19:00", endTime: "19:50", iconName: "Music" },
-    ],
-  },
-  {
-    dayKey: "Ter",
-    dayName: "Terça-feira",
-    daySubtitle: "Spinning & Treino Funcional",
-    items: [
-      { classId: "spinning", className: "Spinning", category: "Cardio Alta Intensidade", room: "Bike Studio", startTime: "06:30", endTime: "07:20", iconName: "Bike" },
-      { classId: "funcional", className: "Treino Funcional", category: "Condicionamento Total", room: "Arena Funcional", startTime: "07:30", endTime: "08:20", iconName: "Dumbbell" },
-      { classId: "spinning", className: "Spinning", category: "Cardio Alta Intensidade", room: "Bike Studio", startTime: "12:00", endTime: "12:50", iconName: "Bike" },
-      { classId: "funcional", className: "Treino Funcional", category: "Condicionamento Total", room: "Arena Funcional", startTime: "17:30", endTime: "18:20", iconName: "Dumbbell" },
-      { classId: "funcional", className: "Treino Funcional", category: "Condicionamento Total", room: "Arena Funcional", startTime: "18:30", endTime: "19:20", iconName: "Dumbbell" },
-      { classId: "spinning", className: "Spinning", category: "Cardio Alta Intensidade", room: "Bike Studio", startTime: "19:30", endTime: "20:20", iconName: "Bike" },
-    ],
-  },
-  {
-    dayKey: "Qua",
-    dayName: "Quarta-feira",
-    daySubtitle: "Pilates & FitDance",
-    items: [
-      { classId: "pilates", className: "Pilates", category: "Flexibilidade & Core", room: "Sala Zen 01", startTime: "07:00", endTime: "07:50", iconName: "Activity" },
-      { classId: "pilates", className: "Pilates", category: "Flexibilidade & Core", room: "Sala Zen 01", startTime: "10:00", endTime: "10:50", iconName: "Activity" },
-      { classId: "fitdance", className: "FitDance", category: "Ritmo & Queima", room: "Studio Dança", startTime: "11:00", endTime: "11:50", iconName: "Music" },
-      { classId: "pilates", className: "Pilates", category: "Flexibilidade & Core", room: "Sala Zen 01", startTime: "18:00", endTime: "18:50", iconName: "Activity" },
-      { classId: "fitdance", className: "FitDance", category: "Ritmo & Queima", room: "Studio Dança", startTime: "19:00", endTime: "19:50", iconName: "Music" },
-    ],
-  },
-  {
-    dayKey: "Qui",
-    dayName: "Quinta-feira",
-    daySubtitle: "Spinning & Treino Funcional",
-    items: [
-      { classId: "spinning", className: "Spinning", category: "Cardio Alta Intensidade", room: "Bike Studio", startTime: "06:30", endTime: "07:20", iconName: "Bike" },
-      { classId: "funcional", className: "Treino Funcional", category: "Condicionamento Total", room: "Arena Funcional", startTime: "07:30", endTime: "08:20", iconName: "Dumbbell" },
-      { classId: "spinning", className: "Spinning", category: "Cardio Alta Intensidade", room: "Bike Studio", startTime: "12:00", endTime: "12:50", iconName: "Bike" },
-      { classId: "funcional", className: "Treino Funcional", category: "Condicionamento Total", room: "Arena Funcional", startTime: "17:30", endTime: "18:20", iconName: "Dumbbell" },
-      { classId: "funcional", className: "Treino Funcional", category: "Condicionamento Total", room: "Arena Funcional", startTime: "18:30", endTime: "19:20", iconName: "Dumbbell" },
-      { classId: "spinning", className: "Spinning", category: "Cardio Alta Intensidade", room: "Bike Studio", startTime: "19:30", endTime: "20:20", iconName: "Bike" },
-    ],
-  },
-  {
-    dayKey: "Sex",
-    dayName: "Sexta-feira",
-    daySubtitle: "Pilates Especial",
-    items: [
-      { classId: "pilates", className: "Pilates", category: "Flexibilidade & Core", room: "Sala Zen 01", startTime: "07:00", endTime: "07:50", iconName: "Activity" },
-      { classId: "pilates", className: "Pilates", category: "Flexibilidade & Core", room: "Sala Zen 01", startTime: "10:00", endTime: "10:50", iconName: "Activity" },
-      { classId: "pilates", className: "Pilates", category: "Flexibilidade & Core", room: "Sala Zen 01", startTime: "18:00", endTime: "18:50", iconName: "Activity" },
-    ],
-  },
-];
 
 export const ClassesTab: React.FC<ClassesTabProps> = ({
-  classes,
+  classesList,
   bookedClasses,
   onBookClass,
   onCancelBooking,
   onNavigateToVic,
-  onRefreshClasses,
+  userMatricula,
 }) => {
-  const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || "");
+  const [selectedClassId, setSelectedClassId] = useState<string>("pilates");
   const [selectedTime, setSelectedTime] = useState<string>("");
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [bookingMessage, setBookingMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const [viewMode, setViewMode] = useState<"schedule" | "modalities">("schedule");
-  const [selectedDayFilter, setSelectedDayFilter] = useState<"ALL" | "Seg" | "Ter" | "Qua" | "Qui" | "Sex">("ALL");
+  const currentClass = classesList.find((c) => c.id === selectedClassId) || classesList[0];
 
-  const selectedClass = classes.find((c) => c.id === selectedClassId) || classes[0];
-
-  useEffect(() => {
-    if (onRefreshClasses) {
-      onRefreshClasses();
-      const interval = setInterval(() => {
-        onRefreshClasses();
-      }, 3000);
-      return () => clearInterval(interval);
-    }
-  }, [onRefreshClasses]);
-
-  const renderClassIcon = (iconName: string, className = "w-5 h-5") => {
-    switch (iconName) {
-      case "Activity":
-        return <Activity className={className} />;
-      case "Bike":
-        return <Bike className={className} />;
-      case "Music":
-        return <Music className={className} />;
-      case "Dumbbell":
-      default:
-        return <Dumbbell className={className} />;
-    }
+  const handleClassChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSelectedClassId(e.target.value);
+    setSelectedTime("");
+    setBookingMessage(null);
   };
 
-  const handleBookingSubmit = (classId: string, time: string) => {
-    setFeedback(null);
-    if (!time) {
-      setFeedback({ type: "error", message: "Selecione um horário disponível para agendar." });
+  const handleBookingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTime) {
+      setBookingMessage({ type: "error", text: "Por favor, selecione um horário disponível." });
       return;
     }
-    const result = onBookClass(classId, time);
-    if (result.success) {
-      setFeedback({ type: "success", message: result.message });
-      setSelectedTime("");
-      if (onRefreshClasses) onRefreshClasses();
-    } else {
-      setFeedback({ type: "error", message: result.message });
+
+    setIsSubmitting(true);
+    setBookingMessage(null);
+
+    try {
+      const res = await onBookClass(currentClass.id, selectedTime, currentClass.name);
+      if (res.success) {
+        setBookingMessage({ type: "success", text: res.message });
+        setSelectedTime("");
+      } else {
+        setBookingMessage({ type: "error", text: res.message });
+      }
+    } catch (err: any) {
+      setBookingMessage({ type: "error", text: "Erro ao realizar agendamento." });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-// Função centralizada para calcular vagas reais globais do banco (MongoDB Atlas)
-  const getSlotAvailability = (classId: string, time: string) => {
-    const normId = classId.toLowerCase().replace(/[^a-z0-9]/g, "");
-
-    // Encontra a aula no array retornado pelo backend (GET /api/classes)
-    const gymClass = classes.find((c) => {
-      const cNorm = c.id.toLowerCase().replace(/[^a-z0-9]/g, "");
-      return cNorm === normId || (normId === "funcional" && cNorm === "treinofuncional") || (normId === "treinofuncional" && cNorm === "funcional");
-    });
-
-    const slot = gymClass?.slots?.find((s: any) => s.time === time);
-    const total = slot?.totalSpots ?? 30;
-
-    // 1. Pega as vagas disponíveis calculadas pelo MongoDB no backend
-    const remaining = slot?.availableSpots !== undefined ? slot.availableSpots : 30;
-
-    // 2. Verifica se o usuário logado possui esta reserva ativa
-    const isBooked = bookedClasses.some((b) => {
-      const bNorm = (b.classId || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-      return (bNorm === normId || (normId === "funcional" && bNorm === "treinofuncional") || (normId === "treinofuncional" && bNorm === "funcional")) && b.time === time;
-    });
-
-    return {
-      remaining: Math.max(0, remaining),
-      total,
-      isFull: remaining <= 0,
-      isBooked,
-    };
+  const getIcon = (iconName: string) => {
+    switch (iconName) {
+      case "Bike":
+        return <Bike className="w-5 h-5 text-[#00C0A3]" />;
+      case "Music":
+        return <Music className="w-5 h-5 text-[#845EC2]" />;
+      case "Dumbbell":
+        return <Dumbbell className="w-5 h-5 text-amber-400" />;
+      case "Activity":
+      default:
+        return <Activity className="w-5 h-5 text-[#00C0A3]" />;
+    }
   };
 
-  const filteredDays =
-    selectedDayFilter === "ALL"
-      ? WEEKDAYS_SCHEDULE
-      : WEEKDAYS_SCHEDULE.filter((d) => d.dayKey === selectedDayFilter);
-
   return (
-    <div className="space-y-8 pb-12">
-      {/* Toast Feedback Alert */}
-      {feedback && (
-        <div
-          className={`p-4 rounded-xl border flex items-center justify-between gap-3 text-sm animate-fadeIn ${
-            feedback.type === "success"
-              ? "bg-[#00C0A3]/10 border-[#00C0A3]/50 text-[#00C0A3]"
-              : "bg-amber-500/10 border-amber-500/50 text-amber-300"
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            {feedback.type === "success" ? (
-              <CheckCircle2 className="w-5 h-5 shrink-0 text-[#00C0A3]" />
-            ) : (
-              <AlertCircle className="w-5 h-5 shrink-0 text-amber-400" />
-            )}
-            <span className="font-medium">{feedback.message}</span>
+    <div className="space-y-6 pb-12">
+      {/* BALÃO INFORMATIVO COM REGRA OFICIAL + ENDEREÇO E TELEFONE DA MOVEFIT */}
+      <div className="bg-[#292433] border border-[#00C0A3]/30 rounded-2xl p-4 sm:p-5 shadow-xl relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-start gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-[#00C0A3]/15 border border-[#00C0A3]/30 flex items-center justify-center shrink-0 mt-0.5">
+            <Clock className="w-5 h-5 text-[#00C0A3]" />
           </div>
-          <button
-            onClick={() => setFeedback(null)}
-            className="text-xs px-2 py-1 rounded bg-black/20 hover:bg-black/40 text-white cursor-pointer"
-          >
-            Fechar
-          </button>
-        </div>
-      )}
 
-      {/* Rules Banner */}
-      <div className="bg-gradient-to-r from-[#845EC2]/15 via-[#1E1B24] to-[#00C0A3]/15 border border-[#845EC2]/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-start sm:items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#845EC2]/20 border border-[#845EC2]/40 flex items-center justify-center shrink-0 text-[#00C0A3]">
-            <Clock className="w-5 h-5" />
-          </div>
-          <div>
+          <div className="space-y-1.5">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#00C0A3] bg-[#00C0A3]/10 px-2 py-0.5 rounded border border-[#00C0A3]/30">
+              <span className="text-[10px] font-extrabold tracking-wider uppercase px-2 py-0.5 rounded bg-[#00C0A3]/20 text-[#00C0A3] border border-[#00C0A3]/40">
                 Regra Oficial MoveFIT
               </span>
-              <span className="text-xs text-zinc-400">Instruções do Treino da IA</span>
+              <span className="text-xs text-[#B0A8B9] font-medium">Instruções do Treino da IA</span>
             </div>
-            <p className="text-sm font-semibold text-white mt-1">
-              Todas as aulas coletivas duram rigorosamente <span className="text-[#00C0A3]">50 minutos</span>.
+
+            <p className="text-xs sm:text-sm text-zinc-200 leading-relaxed">
+              Todas as aulas coletivas duram rigorosamente <strong>50 minutos</strong>.
+              <span className="block text-xs text-[#B0A8B9] mt-0.5">
+                Grade oficial: <strong>Pilates</strong> (Seg/Qua/Sex), <strong>Spinning</strong> (Ter/Qui), <strong>FitDance</strong> (Seg/Qua) e <strong>Treino Funcional</strong> (Ter/Qui).
+              </span>
             </p>
-            <p className="text-xs text-[#B0A8B9] mt-0.5">
-              Grade oficial: <strong>Pilates</strong> (Seg/Qua/Sex), <strong>Spinning</strong> (Ter/Qui), <strong>FitDance</strong> (Seg/Qua) e <strong>Treino Funcional</strong> (Ter/Qui).
-            </p>
+
+            {/* ENDEREÇO E TELEFONE DENTRO DO BALÃO */}
+            <div className="pt-2 border-t border-[#3E374C]/60 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-[#B0A8B9]">
+              <div className="flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-[#00C0A3] shrink-0" />
+                <span>Rua Frederico Grotte, 322 - Jardim São Luís, São Paulo - SP</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-[#00C0A3] shrink-0" />
+                <span>(11) 4002-8922</span>
+              </div>
+            </div>
           </div>
         </div>
 
         <button
           onClick={onNavigateToVic}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#1E1B24] hover:bg-[#845EC2]/20 border border-[#00C0A3]/40 text-[#00C0A3] rounded-xl text-xs font-semibold transition-all cursor-pointer shrink-0 shadow"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#1E1B24] hover:bg-[#342f40] text-[#00C0A3] hover:text-white border border-[#00C0A3]/40 text-xs font-bold transition-all shrink-0 cursor-pointer shadow-md"
         >
-          <div className="w-9 h-9 rounded-full overflow-hidden shrink-0 border border-[#00C0A3]/60">
-            <img
-              src="/assets/foto_vicIA.png"
-              alt="Vic"
-              className="w-full h-full object-cover object-[center_20%]"
-              referrerPolicy="no-referrer"
-            />
-          </div>
-          <span>Agendar com a Vic (IA)</span>
+          <span className="w-6 h-6 rounded-full overflow-hidden border border-[#00C0A3] inline-block shrink-0">
+            <img src="/assets/foto_vicIA.png" alt="Vic" className="w-full h-full object-cover object-[center_20%]" />
+          </span>
+          Agendar com a Vic (IA)
         </button>
       </div>
 
-      {/* SECTION 1: Interactive Class Booking */}
-      <section className="bg-[#292433] border border-[#3E374C] rounded-2xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-6 pb-4 border-b border-[#3E374C]">
+      {/* INSCRIÇÃO RÁPIDA EM AULAS COLETIVAS */}
+      <div className="bg-[#292433] border border-[#3E374C] rounded-2xl p-5 sm:p-6 shadow-xl space-y-4">
+        <div className="flex items-center justify-between border-b border-[#3E374C] pb-3 flex-wrap gap-2">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#00C0A3] animate-pulse"></span>
-              <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
-                Inscrição Rápida em Aulas Coletivas
-              </h2>
-            </div>
-            <p className="text-xs sm:text-sm text-[#B0A8B9] mt-0.5">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#00C0A3] inline-block"></span>
+              Inscrição Rápida em Aulas Coletivas
+            </h3>
+            <p className="text-xs text-[#B0A8B9] mt-0.5">
               Selecione a modalidade e o horário oficial (todas as aulas duram estritamente 50 minutos).
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs text-[#00C0A3] bg-[#00C0A3]/10 border border-[#00C0A3]/20 px-3 py-1.5 rounded-lg w-fit">
-            <Clock className="w-3.5 h-3.5" />
-            <span>Duração padrão: 50 min</span>
-          </div>
+          <span className="inline-flex items-center gap-1.5 text-xs text-[#00C0A3] bg-[#00C0A3]/10 px-3 py-1 rounded-full border border-[#00C0A3]/30">
+            <Clock className="w-3.5 h-3.5" /> Duração padrão: 50 min
+          </span>
         </div>
 
-        {/* Dropdown Selection Form */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+        {bookingMessage && (
+          <div
+            className={`p-3.5 rounded-xl text-xs sm:text-sm flex items-center gap-2.5 ${
+              bookingMessage.type === "success"
+                ? "bg-[#00C0A3]/15 text-[#00C0A3] border border-[#00C0A3]/40"
+                : "bg-red-500/15 text-red-300 border border-red-500/40"
+            }`}
+          >
+            {bookingMessage.type === "success" ? (
+              <CheckCircle2 className="w-4 h-4 text-[#00C0A3] shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+            )}
+            <span>{bookingMessage.text}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleBookingSubmit} className="grid grid-cols-1 md:grid-cols-12 gap-3.5 items-end">
           <div className="md:col-span-5">
-            <label htmlFor="select-class" className="block text-xs font-semibold text-[#B0A8B9] uppercase tracking-wider mb-2">
+            <label className="block text-xs font-semibold text-zinc-300 mb-1.5 uppercase tracking-wider">
               1. Selecionar Modalidade Oficial
             </label>
-            <div className="relative">
-              <select
-                id="select-class"
-                value={selectedClassId}
-                onChange={(e) => {
-                  setSelectedClassId(e.target.value);
-                  setSelectedTime("");
-                }}
-                className="w-full px-4 py-3 bg-[#1E1B24] border border-[#3E374C] rounded-xl text-white text-sm focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] transition-all cursor-pointer font-medium"
-              >
-                {classes.map((cls) => (
-                  <option key={cls.id} value={cls.id} className="bg-[#1E1B24] text-white">
-                    {cls.name} ({cls.days}) • 50 min
-                  </option>
-                ))}
-              </select>
-            </div>
+            <select
+              value={selectedClassId}
+              onChange={handleClassChange}
+              className="w-full h-11 px-3.5 bg-[#1E1B24] border border-[#3E374C] rounded-xl text-white text-sm focus:outline-none focus:border-[#00C0A3] cursor-pointer"
+            >
+              {classesList.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.days}) • 50 min
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="md:col-span-4">
-            <label htmlFor="select-time-slot" className="block text-xs font-semibold text-[#B0A8B9] uppercase tracking-wider mb-2">
+            <label className="block text-xs font-semibold text-zinc-300 mb-1.5 uppercase tracking-wider">
               2. Horário Disponível (Início e Término)
             </label>
             <select
-              id="select-time-slot"
               value={selectedTime}
               onChange={(e) => setSelectedTime(e.target.value)}
-              className="w-full px-4 py-3 bg-[#1E1B24] border border-[#3E374C] rounded-xl text-white text-sm focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] transition-all cursor-pointer font-medium"
+              className="w-full h-11 px-3.5 bg-[#1E1B24] border border-[#3E374C] rounded-xl text-white text-sm focus:outline-none focus:border-[#00C0A3] cursor-pointer"
             >
               <option value="">Selecione um horário...</option>
-              {selectedClass?.slots?.map((slot: any) => {
-                const avail = getSlotAvailability(selectedClass.id, slot.time);
-                const endTime = getSlotEndTime(slot.time);
-
-                return (
-                  <option
-                    key={slot.time}
-                    value={slot.time}
-                    disabled={avail.isFull || avail.isBooked}
-                    className="bg-[#1E1B24] text-white"
-                  >
-                    {slot.time} às {endTime} (50 min) • {avail.isBooked ? "Já Inscrito" : avail.isFull ? "Esgotado (0 vagas)" : `${avail.remaining} vagas`}
-                  </option>
-                );
-              })}
+              {currentClass?.slots?.map((slot) => (
+                <option key={slot.time} value={slot.time} disabled={slot.availableSpots <= 0}>
+                  {slot.time} ({slot.availableSpots} vagas disponíveis)
+                </option>
+              ))}
             </select>
           </div>
 
           <div className="md:col-span-3">
             <button
-              id="btn-confirm-booking"
-              type="button"
-              disabled={!selectedTime}
-              onClick={() => handleBookingSubmit(selectedClass.id, selectedTime)}
-              className={`w-full py-3 px-4 font-semibold text-sm rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                selectedTime
-                  ? "bg-gradient-to-r from-[#845EC2] to-[#00C0A3] text-white shadow-lg glow-purple hover:opacity-95"
-                  : "bg-[#1E1B24] text-[#B0A8B9] border border-[#3E374C] opacity-60 cursor-not-allowed"
-              }`}
+              type="submit"
+              disabled={isSubmitting || !selectedTime}
+              className="w-full h-11 bg-[#845EC2] hover:bg-[#734db1] disabled:bg-zinc-700 disabled:opacity-50 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
-              Confirmar Reserva
+              <CalendarCheck2 className="w-4 h-4" />
+              {isSubmitting ? "Reservando..." : "+ Confirmar Reserva"}
             </button>
           </div>
-        </div>
+        </form>
 
-        {selectedClass && (
-          <div className="mt-4 p-3.5 bg-[#1E1B24] rounded-xl border border-[#3E374C] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2.5">
-              <span className="text-[#00C0A3] font-semibold flex items-center gap-1.5">
-                {renderClassIcon(selectedClass.iconName, "w-4 h-4")}
-                {selectedClass.name}
+        {currentClass && (
+          <div className="bg-[#1E1B24] border border-[#3E374C] rounded-xl p-3 text-xs text-zinc-300 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-3">
+              <span className="font-bold text-white flex items-center gap-1.5">
+                {getIcon(currentClass.iconName)}
+                {currentClass.name}
               </span>
-              <span className="text-zinc-500">•</span>
-              <span className="text-[#B0A8B9]">{selectedClass.category}</span>
-              <span className="text-zinc-500">•</span>
-              <span className="text-zinc-300 font-medium">{selectedClass.days}</span>
+              <span className="text-[#B0A8B9]">• {currentClass.category}</span>
+              <span className="text-[#00C0A3] font-medium">• {currentClass.days}</span>
             </div>
-            <div className="flex items-center gap-2 text-zinc-400">
-              <Info className="w-3.5 h-3.5 text-[#845EC2]" />
-              <span>Duração garantida de 50 minutos por aula</span>
-            </div>
+            <span className="text-zinc-400 text-[11px]">
+              Duração garantida de 50 minutos por aula
+            </span>
           </div>
         )}
-      </section>
+      </div>
 
-      {/* SECTION 2: Active User's Booked Classes */}
-      <section className="space-y-4">
+      {/* SUAS AULAS COLETIVAS AGENDADAS */}
+      <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-              Suas Aulas Coletivas Agendadas
-            </h3>
-            <p className="text-xs text-[#B0A8B9]">
-              Gerencie suas reservas semanais. Você pode cancelar sua vaga a qualquer momento.
-            </p>
-          </div>
-          <span className="text-xs font-semibold px-3 py-1 rounded-full bg-[#845EC2]/20 text-[#00C0A3] border border-[#845EC2]/40">
-            {bookedClasses.length} {bookedClasses.length === 1 ? "reserva ativa" : "reservas ativas"}
+          <h3 className="text-base font-bold text-white">Suas Aulas Coletivas Agendadas</h3>
+          <span className="text-xs text-[#00C0A3] font-semibold bg-[#00C0A3]/10 px-2.5 py-0.5 rounded-full border border-[#00C0A3]/30">
+            {bookedClasses.length} reserva(s) ativa(s)
           </span>
         </div>
 
         {bookedClasses.length === 0 ? (
-          <div className="bg-[#292433] border border-[#3E374C] rounded-2xl p-8 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-[#1E1B24] border border-[#3E374C] flex items-center justify-center mx-auto mb-3 text-[#B0A8B9]">
-              <Calendar className="w-6 h-6 text-[#845EC2]" />
-            </div>
-            <h4 className="text-sm font-bold text-white">Nenhuma aula agendada ainda</h4>
-            <p className="text-xs text-[#B0A8B9] max-w-md mx-auto mt-1 mb-4">
-              Você ainda não reservou vagas para as turmas da semana. Escolha uma das turmas na grade abaixo ou solicite à Vic para agendar direto no chat!
-            </p>
-            <button
-              onClick={onNavigateToVic}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-[#845EC2]/20 hover:bg-[#845EC2]/30 text-[#00C0A3] border border-[#845EC2]/40 rounded-xl text-xs font-semibold transition-all cursor-pointer"
-            >
-              <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-[#00C0A3]/50">
-                <img
-                  src="assets/foto_vicIA.png"
-                  alt="Vic"
-                  className="w-full h-full object-cover object-[center_20%]"
-                  referrerPolicy="no-referrer"
-                />
-              </div>
-              Pedir recomendação para a Vic
-            </button>
+          <div className="bg-[#292433] border border-[#3E374C] rounded-2xl p-6 text-center text-xs text-[#B0A8B9]">
+            Você ainda não possui vagas reservadas em nenhuma aula. Selecione uma modalidade acima!
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {bookedClasses.map((item) => {
-              const endTime = getSlotEndTime(item.time);
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {bookedClasses.map((booking: any) => {
+              const bId = booking.id || booking.bookingId;
+              const bName = booking.className || "Aula Coletiva";
+
               return (
                 <div
-                  key={item.bookingId}
-                  id={`booked-class-${item.bookingId}`}
-                  className="bg-[#292433] border border-[#3E374C] hover:border-[#845EC2]/60 rounded-2xl p-5 shadow-lg relative group transition-all duration-200"
+                  key={bId}
+                  className="bg-[#292433] border border-[#3E374C] rounded-2xl p-4 shadow-md flex items-center justify-between gap-3 relative overflow-hidden"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3.5">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-[#845EC2] to-[#00C0A3] p-[1.5px] shrink-0">
-                        <div className="w-full h-full bg-[#1E1B24] rounded-[10px] flex items-center justify-center text-[#00C0A3]">
-                          {renderClassIcon(item.iconName, "w-6 h-6 text-[#00C0A3]")}
-                        </div>
-                      </div>
+                  <div className="absolute top-0 left-0 bottom-0 w-1 bg-[#00C0A3]"></div>
 
-                      <div>
-                        <h4 className="text-base font-bold text-white tracking-tight">
-                          {item.className}
-                        </h4>
-                        <div className="flex items-center gap-2 mt-1 text-xs text-[#B0A8B9]">
-                          <Calendar className="w-3.5 h-3.5 text-[#00C0A3]" />
-                          <span>
-                            {item.days} • <strong>{item.time} às {endTime}</strong>
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-2 mt-2.5">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#00C0A3]/15 text-[#00C0A3] border border-[#00C0A3]/30">
-                            <Clock className="w-3 h-3" />
-                            50 minutos
-                          </span>
-
-                          <span className="inline-flex items-center gap-1 text-[11px] text-[#B0A8B9]">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                            Vaga Confirmada
-                          </span>
-                        </div>
-                      </div>
+                  <div>
+                    <h4 className="font-bold text-white text-sm">{bName}</h4>
+                    <div className="flex items-center gap-2 text-xs text-[#B0A8B9] mt-1">
+                      <Clock className="w-3.5 h-3.5 text-[#00C0A3]" />
+                      <span className="text-white font-mono font-semibold">{booking.time}</span>
+                      <span>(50 min)</span>
                     </div>
-
-                    <button
-                      id={`btn-cancel-booking-${item.bookingId}`}
-                      onClick={() => {
-                        onCancelBooking(item.bookingId);
-                        if (onRefreshClasses) onRefreshClasses();
-                      }}
-                      title="Cancelar agendamento e liberar vaga"
-                      className="p-2 rounded-xl bg-[#1E1B24] hover:bg-red-500/20 text-[#B0A8B9] hover:text-red-400 border border-[#3E374C] hover:border-red-500/30 transition-all cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
                   </div>
+
+                  <button
+                    onClick={() => {
+                      if (confirm(`Cancelar agendamento de ${bName} às ${booking.time}?`)) {
+                        onCancelBooking(bId);
+                      }
+                    }}
+                    className="p-2 text-zinc-400 hover:text-red-400 rounded-lg hover:bg-red-500/10 transition-colors cursor-pointer"
+                    title="Cancelar agendamento"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               );
             })}
           </div>
         )}
-      </section>
-
-      {/* SECTION 3: Grade Oficial de Horários */}
-      <section className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-[#3E374C]/60">
-          <div>
-            <div className="flex items-center gap-2">
-              <CalendarDays className="w-5 h-5 text-[#00C0A3]" />
-              <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                Grade Oficial de Horários MoveFIT
-              </h3>
-            </div>
-            <p className="text-xs text-[#B0A8B9]">
-              Conforme as diretrizes oficiais do script de treino da academia. Duração estrita de 50 minutos por aula.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-1 bg-[#1E1B24] p-1 rounded-xl border border-[#3E374C] self-start sm:self-auto">
-            <button
-              onClick={() => setViewMode("schedule")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                viewMode === "schedule" ? "bg-[#845EC2] text-white shadow" : "text-[#B0A8B9] hover:text-white"
-              }`}
-            >
-              <CalendarDays className="w-3.5 h-3.5" />
-              Grade Semanal (Por Dia)
-            </button>
-            <button
-              onClick={() => setViewMode("modalities")}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                viewMode === "modalities" ? "bg-[#845EC2] text-white shadow" : "text-[#B0A8B9] hover:text-white"
-              }`}
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              Por Modalidades
-            </button>
-          </div>
-        </div>
-
-        {/* VIEW 1: Grade Semanal por Dia */}
-        {viewMode === "schedule" && (
-          <div className="space-y-5">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
-              <button
-                onClick={() => setSelectedDayFilter("ALL")}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer border ${
-                  selectedDayFilter === "ALL"
-                    ? "bg-[#00C0A3] text-black font-bold border-[#00C0A3] shadow-md shadow-[#00C0A3]/20"
-                    : "bg-[#292433] text-[#B0A8B9] border-[#3E374C] hover:text-white"
-                }`}
-              >
-                Todos os Dias (Seg - Sex)
-              </button>
-              {WEEKDAYS_SCHEDULE.map((day) => (
-                <button
-                  key={day.dayKey}
-                  onClick={() => setSelectedDayFilter(day.dayKey)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer border ${
-                    selectedDayFilter === day.dayKey
-                      ? "bg-[#00C0A3] text-black font-bold border-[#00C0A3] shadow-md shadow-[#00C0A3]/20"
-                      : "bg-[#292433] text-[#B0A8B9] border-[#3E374C] hover:text-white"
-                  }`}
-                >
-                  {day.dayName}
-                </button>
-              ))}
-            </div>
-
-            <div className="space-y-6">
-              {filteredDays.map((day) => (
-                <div
-                  key={day.dayKey}
-                  className="bg-[#292433] border border-[#3E374C] rounded-2xl p-5 shadow-lg relative overflow-hidden"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 mb-4 border-b border-[#3E374C]/80">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-[#00C0A3]/15 border border-[#00C0A3]/30 flex items-center justify-center font-bold text-xs text-[#00C0A3]">
-                        {day.dayKey}
-                      </div>
-                      <div>
-                        <h4 className="text-base font-bold text-white tracking-tight">{day.dayName}</h4>
-                        <p className="text-xs text-[#B0A8B9]">{day.daySubtitle}</p>
-                      </div>
-                    </div>
-
-                    <span className="text-[11px] font-semibold text-[#B0A8B9] bg-[#1E1B24] px-2.5 py-1 rounded-lg border border-[#3E374C] w-fit">
-                      {day.items.length} horários no dia • Duração: 50 min
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {day.items.map((item, idx) => {
-                      const avail = getSlotAvailability(item.classId, item.startTime);
-                      const isFitDance = item.classId === "fitdance";
-                      const isSpinning = item.classId === "spinning";
-                      const isPilates = item.classId === "pilates";
-
-                      const borderAccent = isFitDance
-                        ? "hover:border-pink-500/40"
-                        : isSpinning
-                        ? "hover:border-amber-500/40"
-                        : isPilates
-                        ? "hover:border-[#00C0A3]/50"
-                        : "hover:border-[#845EC2]/50";
-
-                      return (
-                        <div
-                          key={`${day.dayKey}-${item.classId}-${item.startTime}-${idx}`}
-                          className={`bg-[#1E1B24] border border-[#3E374C] ${borderAccent} rounded-xl p-3.5 flex flex-col justify-between transition-all duration-200 group`}
-                        >
-                          <div>
-                            <div className="flex items-center justify-between gap-2 mb-2">
-                              <div className="flex items-center gap-1.5 text-xs font-bold text-white">
-                                <Clock className="w-3.5 h-3.5 text-[#00C0A3]" />
-                                <span>{item.startTime}</span>
-                                <span className="text-zinc-500">→</span>
-                                <span className="text-[#00C0A3]">{item.endTime}</span>
-                              </div>
-
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#845EC2]/20 text-[#c8b2ed] border border-[#845EC2]/30">
-                                50 min
-                              </span>
-                            </div>
-
-                            <div className="flex items-start gap-2.5 mt-2">
-                              <div className="w-8 h-8 rounded-lg bg-[#292433] border border-[#3E374C] flex items-center justify-center text-[#00C0A3] shrink-0">
-                                {renderClassIcon(item.iconName, "w-4 h-4")}
-                              </div>
-                              <div>
-                                <h5 className="text-sm font-bold text-white group-hover:text-[#00C0A3] transition-colors">
-                                  {item.className}
-                                </h5>
-                                <p className="text-[11px] text-[#B0A8B9]">{item.category}</p>
-                                <span className="text-[10px] text-zinc-400 block mt-0.5">{item.room}</span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="mt-3.5 pt-2.5 border-t border-[#3E374C]/60 flex items-center justify-between gap-2">
-                            <div className="text-[11px]">
-                              <span className="text-[#B0A8B9]">Vagas: </span>
-                              <strong className={avail.isFull ? "text-red-400" : "text-white"}>
-                                {avail.remaining}/{avail.total}
-                              </strong>
-                            </div>
-
-                            {avail.isBooked ? (
-                              <span className="text-[11px] font-bold text-[#00C0A3] bg-[#00C0A3]/10 px-2.5 py-1 rounded-lg border border-[#00C0A3]/30 flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3" />
-                                Inscrito
-                              </span>
-                            ) : avail.isFull ? (
-                              <span className="text-[11px] font-bold text-red-400 bg-red-500/10 px-2.5 py-1 rounded-lg border border-red-500/20">
-                                Lotada
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => handleBookingSubmit(item.classId, item.startTime)}
-                                className="text-[11px] font-semibold text-white bg-gradient-to-r from-[#845EC2] to-[#00C0A3] hover:opacity-90 px-3 py-1 rounded-lg transition-all cursor-pointer shadow"
-                              >
-                                Reservar
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* VIEW 2: Visão por Modalidades */}
-        {viewMode === "modalities" && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {classes.map((gymClass) => (
-              <div
-                key={gymClass.id}
-                className="bg-[#292433] border border-[#3E374C] rounded-2xl p-4 flex flex-col justify-between shadow-lg hover:border-[#845EC2]/50 transition-all"
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="w-10 h-10 rounded-xl bg-[#1E1B24] border border-[#3E374C] flex items-center justify-center text-[#00C0A3]">
-                      {renderClassIcon(gymClass.iconName, "w-5 h-5")}
-                    </div>
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[#845EC2]/20 text-[#c8b2ed] border border-[#845EC2]/30">
-                      50 min
-                    </span>
-                  </div>
-
-                  <h4 className="text-base font-bold text-white">{gymClass.name}</h4>
-                  <p className="text-xs text-[#00C0A3] font-medium mt-0.5">{gymClass.days}</p>
-                  <p className="text-[11px] text-[#B0A8B9] mt-2 line-clamp-2">{gymClass.description}</p>
-
-                  <div className="mt-4 space-y-2">
-                    <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block">
-                      Horários (50 min) & Vagas:
-                    </span>
-                    {gymClass.slots?.map((slot: any) => {
-                      const avail = getSlotAvailability(gymClass.id, slot.time);
-                      const endTime = getSlotEndTime(slot.time);
-
-                      return (
-                        <div
-                          key={slot.time}
-                          className="flex items-center justify-between bg-[#1E1B24] p-2 rounded-xl border border-[#3E374C] text-xs"
-                        >
-                          <div>
-                            <span className="font-bold text-white">{slot.time}</span>
-                            <span className="text-[10px] text-zinc-500 ml-1">às {endTime}</span>
-                            <span className="text-[10px] text-[#B0A8B9] ml-1.5 block sm:inline">
-                              ({avail.remaining}/{avail.total} vagas)
-                            </span>
-                          </div>
-
-                          {avail.isBooked ? (
-                            <span className="text-[10px] font-bold text-[#00C0A3] bg-[#00C0A3]/10 px-2 py-0.5 rounded-md border border-[#00C0A3]/30">
-                              Inscrito
-                            </span>
-                          ) : avail.isFull ? (
-                            <span className="text-[10px] font-bold text-red-400 bg-red-500/10 px-2 py-0.5 rounded-md border border-red-500/20">
-                              Lotada
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => handleBookingSubmit(gymClass.id, slot.time)}
-                              className="text-[10px] font-semibold text-white bg-[#845EC2] hover:bg-[#734db1] px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                            >
-                              Reservar
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-[#3E374C]/60 flex items-center justify-between text-[11px] text-[#B0A8B9]">
-                  <span className="flex items-center gap-1">
-                    <Users className="w-3 h-3 text-[#00C0A3]" />
-                    Aulas Coletivas
-                  </span>
-                  <span>Sala Climatizada</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      </div>
     </div>
   );
 };
