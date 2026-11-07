@@ -235,14 +235,26 @@ app.post("/api/auth/register", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Preencha todos os campos obrigatórios." });
     }
 
-    // 1. Checar se e-mail ou matrícula já existem
+    // 1. Verifica se a conexão com o MongoDB está ativa
+    if (mongoose.connection.readyState !== 1) {
+      console.warn("⚠️ Tentativa de cadastro com MongoDB desconectado.");
+      return res.status(503).json({ 
+        error: "O banco de dados ainda está inicializando. Aguarde alguns segundos e tente novamente." 
+      });
+    }
+
+    // 2. Checar se e-mail ou matrícula já existem
     const existingEmail = await User.findOne({ email });
-    if (existingEmail) return res.status(400).json({ error: "E-mail já cadastrado." });
+    if (existingEmail) {
+      return res.status(400).json({ error: "E-mail já cadastrado." });
+    }
 
     const existingMatricula = await User.findOne({ matricula });
-    if (existingMatricula) return res.status(400).json({ error: "Matrícula já cadastrada." });
+    if (existingMatricula) {
+      return res.status(400).json({ error: "Matrícula já cadastrada." });
+    }
 
-    // 2. Gera o username base e garante unicidade
+    // 3. Gera o username base e garante unicidade (.fit)
     let finalUsername = generateFitUsername(fullName);
     let userExists = await User.findOne({ username: finalUsername });
 
@@ -255,7 +267,7 @@ app.post("/api/auth/register", async (req: Request, res: Response) => {
 
     const id = "user-" + Date.now();
 
-    // 3. Salva no MongoDB Atlas
+    // 4. Salva o usuário no MongoDB Atlas
     const newUser = await User.create({
       id,
       fullName,
@@ -269,10 +281,21 @@ app.post("/api/auth/register", async (req: Request, res: Response) => {
       matricula,
     });
 
+    console.log(`✅ Novo usuário cadastrado: ${newUser.username} (${newUser.email})`);
     return res.status(201).json(newUser);
+
   } catch (error: any) {
-    console.error("Erro no cadastro:", error);
-    return res.status(500).json({ error: "Erro ao cadastrar usuário." });
+    console.error("❌ Erro ao cadastrar usuário:", error?.message || error);
+
+    // Trata erro de duplicidade do MongoDB se passar da validação manual
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern || {})[0];
+      if (field === "email") return res.status(400).json({ error: "E-mail já cadastrado." });
+      if (field === "matricula") return res.status(400).json({ error: "Matrícula já cadastrada." });
+      if (field === "username") return res.status(400).json({ error: "Nome de usuário em uso." });
+    }
+
+    return res.status(500).json({ error: "Erro interno ao cadastrar usuário." });
   }
 });
 
