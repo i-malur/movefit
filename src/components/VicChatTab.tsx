@@ -66,7 +66,7 @@ const EXERCISE_TRANSLATIONS: Record<string, string> = {
 
 const ExerciseCard: React.FC<{ exerciseName: string }> = ({ exerciseName }) => {
   const cleanKey = exerciseName.toLowerCase().replace(/_/g, " ").trim();
-  
+
   const portugueseName =
     EXERCISE_TRANSLATIONS[cleanKey] ||
     EXERCISE_TRANSLATIONS[exerciseName.toLowerCase()] ||
@@ -180,15 +180,17 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
   };
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    const bookedText = bookedClasses.length > 0 ? `Você tem **${bookedClasses.length} aula(s)** agendada(s)!` : "Nenhuma aula agendada no momento.";
     const userWeight = user.weight ? `${user.weight} kg` : "não informado";
     const userHeight = user.height ? `${user.height} cm` : "não informada";
+    const userGender = user.gender || "não informado";
+    const userAge = user.age ? `${user.age} anos` : "não informada";
+    const bookedText = bookedClasses.length > 0 ? `Você tem **${bookedClasses.length} aula(s)** agendada(s)!` : "Nenhuma aula agendada no momento.";
 
     return [
       {
         id: "msg-welcome",
         role: "assistant",
-        content: `Oi, ${user.fullName.split(" ")[0]}! Sou a Vic, sua personal trainer na MoveFIT! 💪✨\n\nPerfil carregado: nível **${user.trainingLevel}**, peso **${userWeight}**, altura **${userHeight}**, obs médica: "${user.medicalNotes}" e ${bookedText}\n\nComo posso ajudar você hoje?`,
+        content: `Oi, ${user.fullName.split(" ")[0]}! Sou a Vic, sua personal trainer na MoveFIT! 💪✨\n\nJá analisei e carreguei todas as suas informações de perfil:\n• Nível de treino: **${user.trainingLevel}**\n• Idade: **${userAge}**\n• Gênero: **${userGender}**\n• Peso e Altura: **${userWeight}** / **${userHeight}**\n• Dificuldades / Obs médicas: **${user.medicalNotes}**\n• Status da agenda: ${bookedText}\n\nEstou pronta para adaptar todas as orientações e séries de exercícios para as suas necessidades! O que vamos focar no treino de hoje?`,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       },
     ];
@@ -505,9 +507,8 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
                 key={qc.classId}
                 onClick={() => handleSendMessage(`Vic, por favor agenda a aula de ${qc.name} às ${qc.time} para mim.`)}
                 disabled={isLoading || isAlreadyBooked}
-                className={`px-3 py-2 rounded-xl text-xs font-medium text-left border transition-all flex flex-col justify-between ${
-                  isAlreadyBooked ? "bg-[#00C0A3]/10 border-[#00C0A3]/40 text-[#00C0A3] cursor-default" : "bg-[#1E1B24] hover:bg-[#845EC2]/20 border-[#3E374C] text-zinc-200 cursor-pointer"
-                }`}
+                className={`px-3 py-2 rounded-xl text-xs font-medium text-left border transition-all flex flex-col justify-between ${isAlreadyBooked ? "bg-[#00C0A3]/10 border-[#00C0A3]/40 text-[#00C0A3] cursor-default" : "bg-[#1E1B24] hover:bg-[#845EC2]/20 border-[#3E374C] text-zinc-200 cursor-pointer"
+                  }`}
               >
                 <div className="flex items-center justify-between w-full">
                   <span className="font-bold">{qc.name}</span>
@@ -534,9 +535,8 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
                 <button
                   key={s.id}
                   onClick={() => handleSelectSession(s.id)}
-                  className={`w-full text-left p-2.5 rounded-xl text-xs transition-all truncate block cursor-pointer border ${
-                    currentSessionId === s.id ? "bg-[#845EC2]/20 border-[#845EC2] text-white font-semibold" : "bg-[#1E1B24] border-[#3E374C] text-zinc-300"
-                  }`}
+                  className={`w-full text-left p-2.5 rounded-xl text-xs transition-all truncate block cursor-pointer border ${currentSessionId === s.id ? "bg-[#845EC2]/20 border-[#845EC2] text-white font-semibold" : "bg-[#1E1B24] border-[#3E374C] text-zinc-300"
+                    }`}
                 >
                   <div className="flex items-center gap-2">
                     <MessageSquare className="w-3.5 h-3.5 text-[#00C0A3] shrink-0" />
@@ -613,9 +613,8 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
                           <button
                             type="button"
                             onClick={() => handleToggleSaveRecommendation(msg)}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
-                              isMessageSaved(msg) ? "bg-[#845EC2]/30 text-[#d6c7f7] border border-[#845EC2]/60" : "bg-[#292433] hover:bg-[#342f40] text-zinc-300 border border-[#3E374C]"
-                            }`}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${isMessageSaved(msg) ? "bg-[#845EC2]/30 text-[#d6c7f7] border border-[#845EC2]/60" : "bg-[#292433] hover:bg-[#342f40] text-zinc-300 border border-[#3E374C]"
+                              }`}
                           >
                             {isMessageSaved(msg) ? (
                               <>
@@ -670,9 +669,8 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
               <button
                 type="button"
                 onClick={toggleMicrophone}
-                className={`shrink-0 w-12 h-12 rounded-xl flex items-center justify-center border transition-all cursor-pointer ${
-                  isListening ? "bg-red-500/20 border-red-500/50 text-red-400 animate-pulse" : "bg-[#292433] border-[#3E374C] text-[#B0A8B9] hover:text-white"
-                }`}
+                className={`shrink-0 w-12 h-12 rounded-xl flex items-center justify-center border transition-all cursor-pointer ${isListening ? "bg-red-500/20 border-red-500/50 text-red-400 animate-pulse" : "bg-[#292433] border-[#3E374C] text-[#B0A8B9] hover:text-white"
+                  }`}
               >
                 {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
               </button>

@@ -47,6 +47,8 @@ interface IUser extends Document {
   trainingLevel: string;
   weight?: number;
   height?: number;
+  gender?: string;
+  age?: number;
   medicalNotes: string;
   matricula: string;
   createdAt: Date;
@@ -61,6 +63,8 @@ const UserSchema = new Schema<IUser>({
   trainingLevel: { type: String, default: "Iniciante" },
   weight: { type: Number, default: null },
   height: { type: Number, default: null },
+  gender: { type: String, default: "Não informado" },
+  age: { type: Number, default: null },
   medicalNotes: { type: String, default: "Nenhuma" },
   matricula: { type: String, required: true, unique: true },
   createdAt: { type: Date, default: Date.now },
@@ -146,7 +150,6 @@ const ChatMessageSchema = new Schema<IChatMessage>({
 
 const ChatMessage = mongoose.model<IChatMessage>("ChatMessage", ChatMessageSchema);
 
-// 6. Recomendações Salvas no Perfil
 interface ISavedRecommendation extends Document {
   id: string;
   userId: string;
@@ -186,6 +189,8 @@ async function seedDatabase() {
         trainingLevel: "Iniciante",
         weight: 65.0,
         height: 168,
+        gender: "Feminino",
+        age: 24,
         medicalNotes: "Nenhuma",
         matricula: "MF-2026-001",
       });
@@ -355,7 +360,7 @@ app.get("/api/users", async (_req: Request, res: Response) => {
 
 app.post("/api/auth/register", async (req: Request, res: Response) => {
   try {
-    const { fullName, email, password, trainingLevel, weight, height, medicalNotes, matricula } = req.body;
+    const { fullName, email, password, trainingLevel, weight, height, gender, age, medicalNotes, matricula } = req.body;
 
     if (!fullName || !email || !password || !matricula) {
       return res.status(400).json({ error: "Preencha todos os campos obrigatórios." });
@@ -392,6 +397,8 @@ app.post("/api/auth/register", async (req: Request, res: Response) => {
       trainingLevel: trainingLevel || "Iniciante",
       weight: weight ? parseFloat(weight) : null,
       height: height ? parseFloat(height) : null,
+      gender: gender || "Não informado",
+      age: age ? parseInt(age) : null,
       medicalNotes: medicalNotes || "Nenhuma",
       matricula,
     });
@@ -514,10 +521,6 @@ app.get(["/api/users/:userId/bookings", "/api/classes/booked/:userId", "/api/cla
   }
 });
 
-// ============================================================
-// ENDPOINTS DE RECOMENDAÇÕES SALVAS (PERFIL)
-// ============================================================
-
 app.get("/api/recommendations/:userId", async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
@@ -578,7 +581,7 @@ app.get("/api/health", (_req: Request, res: Response) => {
 });
 
 // ============================================================
-// CHAT DA VIC (IA GROQ + FALLBACK DINÂMICO DE EXERCÍCIOS)
+// CHAT DA VIC (IA GROQ + CONTEXTO BIOLÓGICO COMPLETO)
 // ============================================================
 
 app.post("/api/vic/chat", async (req: Request, res: Response) => {
@@ -591,19 +594,16 @@ app.post("/api/vic/chat", async (req: Request, res: Response) => {
 
     const cleanUserId = userId ? String(userId) : "";
 
-    // 1. GRAVA A MENSAGEM DO UTILIZADOR NO BANCO
     if (sessionId && cleanUserId && mongoose.connection.readyState === 1) {
       await saveChatMessageToDb(sessionId, cleanUserId, "user", message);
     }
 
-    // 2. Processa intenção de agendamento no MongoDB
     let executedAction: any = null;
     const detectedAction = parseBookingIntent(message);
     if (detectedAction && cleanUserId && mongoose.connection.readyState === 1) {
       executedAction = await processVicActionInDatabase(detectedAction, cleanUserId);
     }
 
-    // 3. Obter dados de contexto do aluno
     let userContext = "Aluno participante da MoveFIT.";
     if (mongoose.connection.readyState === 1 && cleanUserId) {
       try {
@@ -612,14 +612,17 @@ app.post("/api/vic/chat", async (req: Request, res: Response) => {
           user = await User.findById(cleanUserId);
         }
         if (user) {
-          userContext = `Nome: ${user.fullName}, Nível: ${user.trainingLevel}, Restrições: ${user.medicalNotes}`;
+          const formattedAge = user.age ? `${user.age} anos` : "Idade não informada";
+          const formattedWeight = user.weight ? `${user.weight} kg` : "Peso não informado";
+          const formattedHeight = user.height ? `${user.height} cm` : "Altura não informada";
+
+          userContext = `Nome: ${user.fullName}, Nível: ${user.trainingLevel}, Idade: ${formattedAge}, Gênero: ${user.gender || "Não informado"}, Peso: ${formattedWeight}, Altura: ${formattedHeight}, Dificuldades/Obs Médicas: ${user.medicalNotes}`;
         }
       } catch (e) {
         console.warn("⚠️ Erro ao buscar perfil:", e);
       }
     }
 
-    // 4. Se houver agendamento direto, confirma na hora
     let replyText = "";
     if (executedAction && executedAction.type === "BOOK_CLASS") {
       replyText = `Com certeza! Agendei a sua aula de ${executedAction.className} às ${executedAction.time} com sucesso! 🏋️‍♀️`;
@@ -627,12 +630,17 @@ app.post("/api/vic/chat", async (req: Request, res: Response) => {
       replyText = `Prontinho! Cancelei a sua reserva na aula de ${executedAction.className}.`;
     }
 
-    // 5. Tenta consultar a API do Groq
     const groqKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
 
     const systemPrompt = `Você é a Vic, personal trainer virtual em 3D e assistente oficial da academia MoveFIT.
 Personalidade: extremamente motivadora, profissional, acolhedora e descontraída.
-Contexto do aluno: ${userContext}
+
+DADOS DE CONTEXTO DO ALUNO CARREGADOS:
+${userContext}
+
+REGRAS DE APRESENTAÇÃO E PERSPECTIVA DE TREINO:
+1. Sempre leve em conta as características individuais (idade, gênero, peso, altura, nível de treino e restrições médicas) ao prescrever exercícios.
+2. Seja encorajadora e extremamente respeitosa quanto a limites físicos ou lesões informadas.
 
 REGRAS OBRIGATÓRIAS DE EXERCÍCIOS E VÍDEOS DEMONSTRATIVOS:
 1. Sempre que o aluno pedir treinos, séries, orientações de execução ou exercícios específicos, forneça uma explicação clara sobre postura/execução e INCLUA OBRIGATORIAMENTE no final da resposta a tag [EXERCISES: nome_do_exercicio1, nome_do_exercicio2].
@@ -679,7 +687,6 @@ REGRAS DE CONVERSAÇÃO:
       }
     }
 
-    // 6. FALLBACK DINÂMICO SE A API FALHAR
     if (!replyText) {
       const lower = message.toLowerCase();
       if (lower.includes("treino") || lower.includes("exercicio") || lower.includes("rotina") || lower.includes("facil") || lower.includes("fáceis") || lower.includes("casa")) {
@@ -698,7 +705,6 @@ Aqui está uma rotina simples, segura e bastante eficiente:
       }
     }
 
-    // 7. GRAVA A RESPOSTA DA VIC NO BANCO
     if (sessionId && cleanUserId && mongoose.connection.readyState === 1) {
       await saveChatMessageToDb(sessionId, cleanUserId, "assistant", replyText, executedAction);
     }

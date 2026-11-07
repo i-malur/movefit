@@ -14,8 +14,6 @@ import {
   Building2,
   Info,
   ArrowRight,
-  Scale,
-  Ruler,
 } from "lucide-react";
 import { User, TrainingLevel } from "../types";
 
@@ -28,7 +26,6 @@ interface AuthViewProps {
 export const AuthView: React.FC<AuthViewProps> = ({
   onLogin,
   registeredUsers = [],
-  onRegisterUser,
 }) => {
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
 
@@ -47,6 +44,8 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [regLevel, setRegLevel] = useState<TrainingLevel>("Iniciante");
   const [regWeight, setRegWeight] = useState("");
   const [regHeight, setRegHeight] = useState("");
+  const [regGender, setRegGender] = useState("Feminino");
+  const [regAge, setRegAge] = useState("");
   const [regMedicalNotes, setRegMedicalNotes] = useState("Nenhuma");
   const [regMatricula, setRegMatricula] = useState("");
   const [showRegPassword, setShowRegPassword] = useState(false);
@@ -56,7 +55,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdUserModalData, setCreatedUserModalData] = useState<any | null>(null);
 
-  // Real-time password requirement flags
   const passLength = regPassword.length >= 8;
   const passUpper = /[A-Z]/.test(regPassword);
   const passLower = /[a-z]/.test(regPassword);
@@ -64,7 +62,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const passSpecial = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?~`]/.test(regPassword);
   const isPasswordValid = passLength && passUpper && passLower && passNumber && passSpecial;
 
-  // Limpa todos os campos do cadastro
   const resetRegisterForm = () => {
     setRegFullName("");
     setRegEmail("");
@@ -73,12 +70,13 @@ export const AuthView: React.FC<AuthViewProps> = ({
     setRegLevel("Iniciante");
     setRegWeight("");
     setRegHeight("");
+    setRegGender("Feminino");
+    setRegAge("");
     setRegMedicalNotes("Nenhuma");
     setRegMatricula("");
     setRegErrors([]);
   };
 
-  // Formatador do username corporativo
   const generateFitUsername = (fullName: string): string => {
     const cleanName = fullName
       .normalize("NFD")
@@ -101,7 +99,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
     setLoginError(null);
   };
 
-  // Handler de Login
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
@@ -164,33 +161,28 @@ export const AuthView: React.FC<AuthViewProps> = ({
     }
   };
 
-  // Handler de Cadastro
- const handleRegisterSubmit = async (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setRegErrors([]);
 
     const errors: string[] = [];
 
-    // 1. Validação do Nome Completo
     const trimmedFullName = regFullName.trim();
     const words = trimmedFullName.split(/\s+/).filter(Boolean);
     if (trimmedFullName.length < 5 || words.length < 2) {
       errors.push("Nome Completo: informe ao menos dois nomes (nome e sobrenome, mín. 5 caracteres).");
     }
 
-    // 2. Validação do E-mail (Normalizado e sem maiúsculas/espaços ocultos)
     const trimmedEmail = regEmail.trim().toLowerCase();
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     if (!trimmedEmail || !emailRegex.test(trimmedEmail)) {
       errors.push("E-mail: formato inválido (exemplo: usuario@email.com).");
     }
 
-    // 3. Validação da Senha
     if (!isPasswordValid) {
       errors.push("Senha: deve atender a todos os 5 requisitos de segurança.");
     }
 
-    // 4. Validação da Matrícula (Remove hífen ou espaços acidentais para comparar limpo)
     const rawMatricula = regMatricula.trim().toUpperCase().replace(/\s+/g, "");
     const matriculaRegex = /^MF-202[0-9]-[0-9]{3}$/i;
 
@@ -205,7 +197,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
       return;
     }
 
-    // Payload pronto para o backend SQLite
     const newUserPayload = {
       fullName: trimmedFullName,
       email: trimmedEmail,
@@ -213,6 +204,8 @@ export const AuthView: React.FC<AuthViewProps> = ({
       trainingLevel: regLevel,
       weight: regWeight ? parseFloat(regWeight.replace(',', '.')) : null,
       height: regHeight ? parseFloat(regHeight.replace(',', '.')) : null,
+      gender: regGender,
+      age: regAge ? parseInt(regAge) : null,
       medicalNotes: regMedicalNotes.trim() || "Nenhuma",
       matricula: rawMatricula,
     };
@@ -237,7 +230,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
       setRegErrors(["Não foi possível conectar ao servidor para salvar o cadastro."]);
     }
   };
-  
+
   const handleCloseModalAndGoToLogin = () => {
     setShowSuccessModal(false);
     if (createdUserModalData?.username) {
@@ -249,7 +242,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
 
   return (
     <div className="min-h-screen flex flex-col justify-center items-center px-4 py-8 sm:py-12 bg-[#1E1B24] relative">
-      {/* ================= POP-UP MODAL DE SUCESSO ================= */}
       {showSuccessModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="bg-[#292433] border border-[#00C0A3]/40 rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center space-y-4">
@@ -291,7 +283,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
         </div>
       )}
 
-      {/* Brand Header */}
       <div className="text-center mb-6 max-w-lg">
         <div className="inline-flex items-center justify-center gap-3 mb-2">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-[#845EC2] to-[#00C0A3] p-[2px] shadow-lg">
@@ -310,16 +301,10 @@ export const AuthView: React.FC<AuthViewProps> = ({
         </div>
       </div>
 
-      {/* Main Container */}
-      <div
-        className={`w-full transition-all duration-200 ${
-          activeTab === "register" ? "max-w-2xl" : "max-w-md"
-        }`}
-      >
+      <div className={`w-full transition-all duration-200 ${activeTab === "register" ? "max-w-2xl" : "max-w-md"}`}>
         <div className="bg-[#292433] border border-[#3E374C] rounded-2xl p-6 sm:p-8 shadow-xl relative">
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#845EC2] via-[#00C0A3] to-[#845EC2] rounded-t-2xl"></div>
 
-          {/* Clean Tab Switcher */}
           <div className="grid grid-cols-2 bg-[#1E1B24] p-1 rounded-xl border border-[#3E374C] mb-6">
             <button
               id="tab-login"
@@ -329,9 +314,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 setLoginError(null);
               }}
               className={`py-2.5 px-4 rounded-lg font-semibold text-sm transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer ${
-                activeTab === "login"
-                  ? "bg-[#845EC2] text-white shadow"
-                  : "text-[#B0A8B9] hover:text-white"
+                activeTab === "login" ? "bg-[#845EC2] text-white shadow" : "text-[#B0A8B9] hover:text-white"
               }`}
             >
               <LogIn className="w-4 h-4" />
@@ -345,9 +328,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 setRegErrors([]);
               }}
               className={`py-2.5 px-4 rounded-lg font-semibold text-sm transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer ${
-                activeTab === "register"
-                  ? "bg-[#00C0A3] text-white shadow"
-                  : "text-[#B0A8B9] hover:text-white"
+                activeTab === "register" ? "bg-[#00C0A3] text-white shadow" : "text-[#B0A8B9] hover:text-white"
               }`}
             >
               <UserPlus className="w-4 h-4" />
@@ -355,14 +336,10 @@ export const AuthView: React.FC<AuthViewProps> = ({
             </button>
           </div>
 
-          {/* ==================== LOGIN FORM ==================== */}
           {activeTab === "login" && (
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               {loginError && (
-                <div
-                  id="login-error-alert"
-                  className="bg-red-500/10 border border-red-500/40 rounded-xl p-3.5 text-xs sm:text-sm text-red-200 flex items-start gap-2.5"
-                >
+                <div id="login-error-alert" className="bg-red-500/10 border border-red-500/40 rounded-xl p-3.5 text-xs sm:text-sm text-red-200 flex items-start gap-2.5">
                   <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                   <div>
                     <p className="font-semibold text-amber-300">Erro de login</p>
@@ -440,13 +417,9 @@ export const AuthView: React.FC<AuthViewProps> = ({
             </form>
           )}
 
-          {/* ==================== REGISTRATION FORM ==================== */}
           {activeTab === "register" && (
             <form onSubmit={handleRegisterSubmit} className="space-y-4">
-              <div
-                id="aviso-matricula-presencial"
-                className="bg-amber-500/10 border border-amber-500/35 rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm text-amber-200/95 flex items-start gap-3 shadow-inner"
-              >
+              <div id="aviso-matricula-presencial" className="bg-amber-500/10 border border-amber-500/35 rounded-xl p-3.5 sm:p-4 text-xs sm:text-sm text-amber-200/95 flex items-start gap-3 shadow-inner">
                 <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0 mt-0.5">
                   <Building2 className="w-4 h-4 text-amber-400" />
                 </div>
@@ -464,10 +437,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
               </div>
 
               {regErrors.length > 0 && (
-                <div
-                  id="registration-errors-banner"
-                  className="bg-red-500/10 border border-red-500/40 rounded-xl p-3.5 text-xs text-red-200"
-                >
+                <div id="registration-errors-banner" className="bg-red-500/10 border border-red-500/40 rounded-xl p-3.5 text-xs text-red-200">
                   <div className="flex items-center gap-2 text-amber-300 font-semibold mb-1.5">
                     <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                     <span>Corrija os seguintes campos:</span>
@@ -481,7 +451,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {/* 1. Nome Completo */}
                 <div>
                   <label htmlFor="reg-fullname" className="block text-xs font-medium text-zinc-300 mb-1">
                     Nome Completo <span className="text-red-400">*</span>
@@ -496,7 +465,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   />
                 </div>
 
-                {/* 2. E-mail */}
                 <div>
                   <label htmlFor="reg-email" className="block text-xs font-medium text-zinc-300 mb-1">
                     E-mail <span className="text-red-400">*</span>
@@ -511,7 +479,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   />
                 </div>
 
-                {/* 3. Usuário Corporativo (.fit) - Gerado Automaticamente */}
                 <div>
                   <label htmlFor="reg-username" className="block text-xs font-medium text-zinc-300 mb-1">
                     Usuário Movefit <span className="text-red-400">*</span>
@@ -526,7 +493,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   />
                 </div>
 
-                {/* 4. Nível do Usuário */}
                 <div>
                   <label htmlFor="reg-level" className="block text-xs font-medium text-zinc-300 mb-1">
                     Nível do Usuário <span className="text-red-400">*</span>
@@ -539,11 +505,42 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   >
                     <option value="Iniciante">Iniciante</option>
                     <option value="Moderado">Moderado</option>
+                    <option value="Intermediário">Intermediário</option>
                     <option value="Avançado">Avançado</option>
                   </select>
                 </div>
 
-                {/* 5. Peso (kg) e Altura (cm) */}
+                <div>
+                  <label htmlFor="reg-gender" className="block text-xs font-medium text-zinc-300 mb-1">
+                    Gênero <span className="text-red-400">*</span>
+                  </label>
+                  <select
+                    id="reg-gender"
+                    value={regGender}
+                    onChange={(e) => setRegGender(e.target.value)}
+                    className="w-full h-10 px-3 bg-[#1E1B24] border border-[#3E374C] rounded-lg text-white focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] text-sm cursor-pointer"
+                  >
+                    <option value="Feminino">Feminino</option>
+                    <option value="Masculino">Masculino</option>
+                    <option value="Outro">Outro</option>
+                    <option value="Prefiro não informar">Prefiro não informar</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="reg-age" className="block text-xs font-medium text-zinc-300 mb-1">
+                    Idade (anos)
+                  </label>
+                  <input
+                    id="reg-age"
+                    type="number"
+                    value={regAge}
+                    onChange={(e) => setRegAge(e.target.value)}
+                    placeholder="Ex: 24"
+                    className="w-full h-10 px-3 bg-[#1E1B24] border border-[#3E374C] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] text-sm"
+                  />
+                </div>
+
                 <div>
                   <label htmlFor="reg-weight" className="block text-xs font-medium text-zinc-300 mb-1">
                     Peso (kg)
@@ -573,7 +570,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   />
                 </div>
 
-                {/* 6. Senha */}
                 <div className="sm:col-span-2">
                   <div className="flex items-center justify-between mb-1">
                     <label htmlFor="reg-password" className="block text-xs font-medium text-zinc-300">
@@ -610,60 +606,29 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   </div>
 
                   <div className="flex flex-wrap gap-1.5 mt-2">
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] border transition-colors ${
-                        passLength
-                          ? "bg-[#00C0A3]/10 border-[#00C0A3]/40 text-[#00C0A3] font-medium"
-                          : "bg-[#1E1B24] border-[#3E374C] text-zinc-400"
-                      }`}
-                    >
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] border transition-colors ${passLength ? "bg-[#00C0A3]/10 border-[#00C0A3]/40 text-[#00C0A3] font-medium" : "bg-[#1E1B24] border-[#3E374C] text-zinc-400"}`}>
                       <Check className={`w-3 h-3 ${passLength ? "text-[#00C0A3]" : "text-zinc-600"}`} />
                       8+ caracteres
                     </span>
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] border transition-colors ${
-                        passUpper
-                          ? "bg-[#00C0A3]/10 border-[#00C0A3]/40 text-[#00C0A3] font-medium"
-                          : "bg-[#1E1B24] border-[#3E374C] text-zinc-400"
-                      }`}
-                    >
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] border transition-colors ${passUpper ? "bg-[#00C0A3]/10 border-[#00C0A3]/40 text-[#00C0A3] font-medium" : "bg-[#1E1B24] border-[#3E374C] text-zinc-400"}`}>
                       <Check className={`w-3 h-3 ${passUpper ? "text-[#00C0A3]" : "text-zinc-600"}`} />
                       1 maiúscula (A-Z)
                     </span>
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] border transition-colors ${
-                        passLower
-                          ? "bg-[#00C0A3]/10 border-[#00C0A3]/40 text-[#00C0A3] font-medium"
-                          : "bg-[#1E1B24] border-[#3E374C] text-zinc-400"
-                      }`}
-                    >
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] border transition-colors ${passLower ? "bg-[#00C0A3]/10 border-[#00C0A3]/40 text-[#00C0A3] font-medium" : "bg-[#1E1B24] border-[#3E374C] text-zinc-400"}`}>
                       <Check className={`w-3 h-3 ${passLower ? "text-[#00C0A3]" : "text-zinc-600"}`} />
                       1 minúscula (a-z)
                     </span>
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] border transition-colors ${
-                        passNumber
-                          ? "bg-[#00C0A3]/10 border-[#00C0A3]/40 text-[#00C0A3] font-medium"
-                          : "bg-[#1E1B24] border-[#3E374C] text-zinc-400"
-                      }`}
-                    >
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] border transition-colors ${passNumber ? "bg-[#00C0A3]/10 border-[#00C0A3]/40 text-[#00C0A3] font-medium" : "bg-[#1E1B24] border-[#3E374C] text-zinc-400"}`}>
                       <Check className={`w-3 h-3 ${passNumber ? "text-[#00C0A3]" : "text-zinc-600"}`} />
                       1 número (0-9)
                     </span>
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] border transition-colors ${
-                        passSpecial
-                          ? "bg-[#00C0A3]/10 border-[#00C0A3]/40 text-[#00C0A3] font-medium"
-                          : "bg-[#1E1B24] border-[#3E374C] text-zinc-400"
-                      }`}
-                    >
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] border transition-colors ${passSpecial ? "bg-[#00C0A3]/10 border-[#00C0A3]/40 text-[#00C0A3] font-medium" : "bg-[#1E1B24] border-[#3E374C] text-zinc-400"}`}>
                       <Check className={`w-3 h-3 ${passSpecial ? "text-[#00C0A3]" : "text-zinc-600"}`} />
                       1 caractere especial (!@#\$...)
                     </span>
                   </div>
                 </div>
 
-                {/* 7. Matrícula */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label htmlFor="reg-matricula" className="block text-xs font-semibold text-zinc-300">
@@ -692,7 +657,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   </p>
                 </div>
 
-                {/* 8. Restrição / Observação Médica */}
                 <div>
                   <label htmlFor="reg-medical" className="block text-xs font-medium text-zinc-300 mb-1">
                     Restrição Médica <span className="text-red-400">*</span>
@@ -708,7 +672,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </div>
               </div>
 
-              {/* Submit Button */}
               <button
                 id="btn-submit-register"
                 type="submit"
@@ -736,7 +699,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
         </div>
       </div>
 
-      {/* Footer Info */}
       <div className="mt-6 flex items-center gap-4 text-xs text-[#B0A8B9]">
         <span className="flex items-center gap-1.5">
           <ShieldCheck className="w-3.5 h-3.5 text-[#00C0A3]" /> Ambiente Seguro

@@ -1,6 +1,49 @@
-export type TrainingLevel = "Iniciante" | "Moderado" | "Avançado";
+export type TrainingLevel = "Iniciante" | "Moderado" | "Intermediário" | "Avançado";
 
 export type RecommendationCategory = "treino" | "aquecimento" | "exercicio" | "geral";
+
+export interface User {
+  id: string;
+  fullName: string;
+  email: string;
+  username: string;
+  password?: string;
+  trainingLevel: TrainingLevel;
+  weight?: number;
+  height?: number;
+  gender?: string;
+  age?: number;
+  medicalNotes: string;
+  matricula: string;
+  createdAt: string;
+}
+
+export interface GymClassSlot {
+  time: string;
+  totalSpots: number;
+  bookedSpots: number;
+  availableSpots: number;
+}
+
+export interface GymClass {
+  id: string;
+  name: string;
+  category: string;
+  days: string;
+  description: string;
+  iconName: string;
+  slots: GymClassSlot[];
+}
+
+export interface BookedClass {
+  bookingId: string;
+  classId: string;
+  className: string;
+  time: string;
+  schedule?: string;
+  duration?: string;
+  bookedAt?: string;
+}
 
 export interface SavedRecommendation {
   id: string;
@@ -12,55 +55,13 @@ export interface SavedRecommendation {
   savedAt: string;
 }
 
-export interface User {
-  id: string;
-  fullName: string;
-  email: string;
-  username: string;
-  password?: string;
-  trainingLevel: TrainingLevel;
-  weight?: number;
-  height?: number;
-  medicalNotes: string;
-  matricula: string;
-  createdAt: string;
-}
-
-export interface GymClassSlot {
-  time: string;
-  totalSpots: number;
-  bookedSpots: number;
-}
-
-export interface GymClass {
-  id: string;
-  name: string;
-  days: string;
-  slots: GymClassSlot[];
-  category: string;
-  iconName: "Activity" | "Bike" | "Music" | "Dumbbell";
-  description: string;
-  instructor?: string;
-}
-
-export interface BookedClass {
-  bookingId: string;
-  classId: string;
-  className: string;
-  days: string;
-  time: string;
-  schedule: string; // e.g., "Seg / Qua / Sex • 07:00"
-  duration: string; // "50 minutos"
-  iconName: "Activity" | "Bike" | "Music" | "Dumbbell";
-  bookedAt: string;
-}
-
 export interface ChatAction {
   type: "BOOK_CLASS" | "CANCEL_CLASS";
   classId: string;
-  className?: string;
+  className: string;
   time?: string;
-  status?: "success" | "error";
+  bookingId?: string;
+  status: "success" | "error";
   statusMessage?: string;
 }
 
@@ -70,12 +71,4 @@ export interface ChatMessage {
   content: string;
   timestamp: string;
   action?: ChatAction;
-}
-
-export interface RegistrationErrors {
-  fullName?: string;
-  email?: string;
-  username?: string;
-  password?: string;
-  trainingLevel?: string;
 }

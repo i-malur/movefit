@@ -53,10 +53,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   onNavigateToClasses,
   onNavigateToVic,
 }) => {
-  // Sub-tabs no Perfil: "recommendations" | "classes"
   const [activeSection, setActiveSection] = useState<"recommendations" | "classes">("recommendations");
-
-  // Filtro de categorias: "all" | "treino" | "aquecimento" | "exercicio"
   const [categoryFilter, setCategoryFilter] = useState<"all" | RecommendationCategory>("all");
 
   // Modal / Estado de Edição de Perfil
@@ -64,18 +61,18 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   const [editFullName, setEditFullName] = useState(user.fullName);
   const [editEmail, setEditEmail] = useState(user.email);
   const [editLevel, setEditLevel] = useState<TrainingLevel>(user.trainingLevel);
+  const [editGender, setEditGender] = useState(user.gender || "Feminino");
+  const [editAge, setEditAge] = useState(user.age ? String(user.age) : "");
+  const [editWeight, setEditWeight] = useState(user.weight ? String(user.weight) : "");
+  const [editHeight, setEditHeight] = useState(user.height ? String(user.height) : "");
   const [editMedicalNotes, setEditMedicalNotes] = useState(user.medicalNotes || "Nenhuma");
   const [editPassword, setEditPassword] = useState("");
   const [editErrors, setEditErrors] = useState<string[]>([]);
   const [editSuccessMessage, setEditSuccessMessage] = useState<string | null>(null);
 
-  // Estado de cópia para área de transferência
   const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  // Estado de reprodução de voz
   const [speakingId, setSpeakingId] = useState<string | null>(null);
 
-  // Inicials do utilizador
   const initials = user.fullName
     .split(/\s+/)
     .filter(Boolean)
@@ -87,6 +84,10 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     setEditFullName(user.fullName);
     setEditEmail(user.email);
     setEditLevel(user.trainingLevel);
+    setEditGender(user.gender || "Feminino");
+    setEditAge(user.age ? String(user.age) : "");
+    setEditWeight(user.weight ? String(user.weight) : "");
+    setEditHeight(user.height ? String(user.height) : "");
     setEditMedicalNotes(user.medicalNotes || "Nenhuma");
     setEditPassword("");
     setEditErrors([]);
@@ -126,6 +127,10 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
       fullName: trimmedName,
       email: trimmedEmail,
       trainingLevel: editLevel,
+      gender: editGender,
+      age: editAge ? parseInt(editAge) : undefined,
+      weight: editWeight ? parseFloat(editWeight) : undefined,
+      height: editHeight ? parseFloat(editHeight) : undefined,
       medicalNotes: editMedicalNotes.trim() || "Nenhuma",
     };
 
@@ -240,7 +245,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
               </div>
 
               <div className="flex items-center gap-2.5 mt-2 flex-wrap text-xs">
-                <span className="inline-flex items-center gap-1.5 bg-[#1E1B24] px-3 py-1 rounded-lg border border-[#3E374C] font-mono font-medium text-white shadow-sm">
+                <span className="inline-flex items-center gap-1 bg-[#1E1B24] px-3 py-1 rounded-lg border border-[#3E374C] font-mono font-medium text-white shadow-sm">
                   <IdCard className="w-3.5 h-3.5 text-[#00C0A3]" />
                   Matrícula: <strong className="text-white ml-0.5">{user.matricula}</strong>
                 </span>
@@ -249,6 +254,18 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                   <Dumbbell className="w-3.5 h-3.5 text-[#845EC2]" />
                   Nível: {user.trainingLevel}
                 </span>
+
+                {user.gender && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#1E1B24] text-zinc-300 border border-[#3E374C]">
+                    Gênero: {user.gender}
+                  </span>
+                )}
+
+                {user.age && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#1E1B24] text-zinc-300 border border-[#3E374C]">
+                    Idade: {user.age} anos
+                  </span>
+                )}
 
                 {user.medicalNotes && user.medicalNotes !== "Nenhuma" && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/25">
@@ -385,13 +402,76 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                   className="w-full h-10 px-3 bg-[#1E1B24] border border-[#3E374C] rounded-lg text-white focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] text-sm cursor-pointer"
                 >
                   <option value="Iniciante">Iniciante</option>
+                  <option value="Moderado">Moderado</option>
                   <option value="Intermediário">Intermediário</option>
                   <option value="Avançado">Avançado</option>
                 </select>
               </div>
 
+              {/* NOVOS CAMPOS: Gênero e Idade */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                    Gênero
+                  </label>
+                  <select
+                    value={editGender}
+                    onChange={(e) => setEditGender(e.target.value)}
+                    className="w-full h-10 px-3 bg-[#1E1B24] border border-[#3E374C] rounded-lg text-white focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] text-sm cursor-pointer"
+                  >
+                    <option value="Feminino">Feminino</option>
+                    <option value="Masculino">Masculino</option>
+                    <option value="Outro">Outro</option>
+                    <option value="Prefiro não informar">Prefiro não informar</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                    Idade (anos)
+                  </label>
+                  <input
+                    type="number"
+                    value={editAge}
+                    onChange={(e) => setEditAge(e.target.value)}
+                    placeholder="Ex: 24"
+                    className="w-full h-10 px-3.5 bg-[#1E1B24] border border-[#3E374C] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Peso e Altura */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                    Peso (kg)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={editWeight}
+                    onChange={(e) => setEditWeight(e.target.value)}
+                    placeholder="Ex: 65.5"
+                    className="w-full h-10 px-3.5 bg-[#1E1B24] border border-[#3E374C] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                    Altura (cm)
+                  </label>
+                  <input
+                    type="number"
+                    value={editHeight}
+                    onChange={(e) => setEditHeight(e.target.value)}
+                    placeholder="Ex: 170"
+                    className="w-full h-10 px-3.5 bg-[#1E1B24] border border-[#3E374C] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] text-sm"
+                  />
+                </div>
+              </div>
+
               <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                <label className="block text-xs font-semibold text-zinc-[#d1c9db] mb-1">
                   Observações Médicas ou Restrições
                 </label>
                 <input
