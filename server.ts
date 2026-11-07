@@ -606,122 +606,66 @@ app.get("/api/health", (_req: Request, res: Response) => {
 
 app.post("/api/vic/chat", async (req: Request, res: Response) => {
   try {
-    const { message, history = [], user, sessionId } = req.body;
+    const { userId, message } = req.body;
 
-    if (!message || typeof message !== "string") {
-      return res.status(400).json({ error: "Mensagem inválida." });
+    if (!message) {
+      return res.status(400).json({ error: "Mensagem não informada." });
     }
 
-    const userName = user?.fullName || "Aluno(a)";
-    const userMatricula = user?.matricula || "Não informada";
-    const trainingLevel = user?.trainingLevel || "Iniciante";
-    const weight = user?.weight ? `${user.weight} kg` : "Não informado";
-    const height = user?.height ? `${user.height} cm` : "Não informada";
-    const medicalNotes = user?.medicalNotes || "Nenhuma";
-
-    const systemInstruction = `
-Você é a "Vic", a assistente virtual e personal trainer digital da MoveFIT.
-
-IDENTIDADE:
-- Nome: Vic | Idade: 24 anos | Gênero: Feminino.
-- Personalidade: Energética, motivadora, empática e acolhedora.
-- Idioma: Português do Brasil estritamente (NUNCA utilize termos em espanhol como "brazos", "piernas", etc.).
-
-PERFIL COMPLETO DO ALUNO:
-- Nome: ${userName}
-- Matrícula: ${userMatricula}
-- Nível de Treino: ${trainingLevel}
-- Peso: ${weight}
-- Altura: ${height}
-- Restrições/Observações Médicas: ${medicalNotes}
-- Aulas Agendadas: ${bookedClasses}
-
-REGRAS DE ADAPTAÇÃO DE TREINO E SEGURANÇA:
-1. RESTRIÇÕES MÉDICAS: Respeite estritamente qualquer restrição registrada (${medicalNotes}). NUNCA recomende exercícios que sobrecarreguem regiões lesionadas ou apresentem risco à saúde do aluno.
-2. ADAPTAÇÃO POR NÍVEL: Ajuste o volume, cargas, variações e intensidade ao nível ${trainingLevel}.
-   - Iniciante: foco em execução, técnica e menor impacto.
-   - Moderado/Avançado: pode sugerir maior intensidade, métodos avançados ou maior volume.
-3. ADAPTAÇÃO BIOMÉTRICA: Leve em consideração o peso (${weight}) e altura (${height}) para calcular/estimar desgaste energético, ajustar mecânica de movimento e orientar ergonomia de aparelhos.
-
-REGRA OBRIGATÓRIA DE MATRÍCULA:
-- O número de matrícula é ESTRITAMENTE OBRIGATÓRIO (Estrutura MF-202X-00X).
-- Se perguntarem sobre como obter uma matrícula, oriente a ir presencialmente à recepção física da MoveFIT.
-
-REGRAS DE RESPOSTA E ÁUDIO:
-- Respostas curtas e diretas (máximo 2 a 3 frases concisas).
-- NUNCA utilize formatação Markdown (como *, #, _ ou negritos).
-- Limite o uso de emojis.
-
-REGRA OBRIGATÓRIA DE EXERCÍCIOS E TAGS:
-- Sempre que sugerir um treino, aquecimento ou exercício, você DEVE obrigatoriamente incluir ao final da resposta a tag no formato exato: [EXERCISES: exercicio_1, exercicio_2].
-- Escreva os nomes dos exercícios na tag sempre em PORTUGUÊS DO BRASIL.
-- Exemplos válidos: [EXERCISES: polichinelo, agachamento livre, flexao de braco, prancha abdominal].
-
-AGENDAMENTO:
-- Use a função bookGymClass para agendar e cancelGymClass para cancelar quando solicitado.
-- Todas as aulas duram 50 minutos.
-`;
-
-    if (!groq) {
-      const parsedAction = parseBookingIntent(message);
-      let reply = `Oi, ${userName}! Sou a Vic da MoveFIT! 💪✨`;
-
-      if (parsedAction?.type === "BOOK_CLASS") {
-        reply = `Maravilha, ${userName}! Agendei sua aula de ${parsedAction.className} para as ${parsedAction.time}. 💪🔥`;
-      } else if (parsedAction?.type === "CANCEL_CLASS") {
-        reply = `Entendido, ${userName}! Cancelei seu agendamento em ${parsedAction.className}. 🌟`;
+    // 1. Busca contexto do usuário no MongoDB (se conectado)
+    let userContext = "Usuário sem perfil cadastrado.";
+    if (mongoose.connection.readyState === 1 && userId) {
+      const user = await User.findOne({ id: userId });
+      if (user) {
+        userContext = `Nome: ${user.fullName}, Nível: ${user.trainingLevel}, Restrições: ${user.medicalNotes}`;
       }
-
-      await processVicActionInDatabase(parsedAction, user?.id);
-      await saveChatMessageToDb(sessionId, user?.id, "user", message, null);
-      await saveChatMessageToDb(sessionId, user?.id, "assistant", reply, parsedAction);
-
-      return res.json({ reply, action: parsedAction });
     }
 
-    const messages: Groq.Chat.CompletionCreateParams.Message[] = [{ role: "system", content: systemInstruction }];
-    const recentHistory = Array.isArray(history) ? history.slice(-10) : [];
+    // 2. Chave de API para o modelo de linguagem (Groq / Gemini)
+    const apiKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
 
-    for (const msg of recentHistory) {
-      messages.push({ role: msg.role === "assistant" ? "assistant" : "user", content: String(msg.content || "") });
+    if (!apiKey) {
+      // Fallback amigável caso a chave de IA não esteja configurada no Render
+      return res.json({
+        response: "Olá! Sou a Vic 🏋️‍♀️. Minha conexão com o modelo de IA está sendo configurada nas variáveis do servidor, mas estou pronta para te ajudar no treino!",
+      });
     }
-    messages.push({ role: "user", content: message });
 
-    const completion = await groq.chat.completions.create({
-      messages,
-      model: "openai/gpt-oss-20b",
-      temperature: 0.7,
-      tools,
-      tool_choice: "auto",
+    // 3. Chamada para a API da IA (exemplo Groq/Fetch)
+    const aiResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages: [
+          {
+            role: "system",
+            content: `Você é a Vic, uma personal trainer virtual em 3D da academia MoveFIT. Seja motivadora, descontraída e acolhedora. Contexto do aluno: ${userContext}`,
+          },
+          { role: "user", content: message },
+        ],
+      }),
     });
 
-    const responseMessage = completion.choices[0]?.message;
-    let action: any = null;
-
-    if (responseMessage?.tool_calls && responseMessage.tool_calls.length > 0) {
-      const toolCall = responseMessage.tool_calls[0];
-      const functionArgs = JSON.parse(toolCall.function.arguments || "{}");
-      const functionName = toolCall.function.name;
-
-      if (functionName === "bookGymClass") {
-        action = { type: "BOOK_CLASS", classId: functionArgs.classId, time: functionArgs.time, className: CLASS_NAMES[functionArgs.classId] || functionArgs.classId };
-      } else if (functionName === "cancelGymClass") {
-        action = { type: "CANCEL_CLASS", classId: functionArgs.classId, className: CLASS_NAMES[functionArgs.classId] || functionArgs.classId };
-      }
+    if (!aiResponse.ok) {
+      throw new Error(`Erro na API de IA: ${aiResponse.statusText}`);
     }
 
-    if (!action) action = parseBookingIntent(message);
+    const data = await aiResponse.json();
+    const reply = data.choices[0]?.message?.content || "Desculpe, não consegui processar a resposta agora.";
 
-    let rawReply = responseMessage?.content || `Perfeito, ${userName}! Como posso te ajudar com os treinos?`;
-    let cleanText = rawReply.replace(/\*+/g, "").replace(/#/g, "").replace(/\s+/g, " ").trim();
+    return res.json({ response: reply });
 
-    await processVicActionInDatabase(action, user?.id);
-    await saveChatMessageToDb(sessionId, user?.id, "user", message, null);
-    await saveChatMessageToDb(sessionId, user?.id, "assistant", cleanText, action);
-
-    return res.json({ reply: cleanText, action });
   } catch (error: any) {
-    return res.status(500).json({ error: "Erro interno no chat da Vic." });
+    console.error("❌ Erro no chat da Vic:", error?.message || error);
+    
+    // Retorna SEMPRE um JSON válido para evitar a tela de erro no frontend
+    return res.status(200).json({
+      response: "Tive um pequeno percalço na conexão com meu servidor, mas já estou de volta! Como posso te ajudar com o treino hoje?",
+    });
   }
 });
 
