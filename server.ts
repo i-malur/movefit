@@ -210,7 +210,7 @@ function generateFitUsername(fullName: string): string {
 }
 
 // ============================================================
-// INTENÇÃO E PROCESSAMENTO DE AÇÕES DA VIC NO MONGODB
+// PARSER E PROCESSADOR DE AÇÕES DE AGENDAMENTO
 // ============================================================
 
 const CLASS_NAMES: Record<string, string> = {
@@ -257,35 +257,45 @@ function parseBookingIntent(text: string): { type: "BOOK_CLASS" | "CANCEL_CLASS"
   return null;
 }
 
-async function processVicActionInDatabase(action: any, userId?: string) {
+async function processVicActionInDatabase(action: any, userId: string) {
   if (!action || !userId) return null;
   try {
+    const cleanUserId = String(userId);
     if (action.type === "BOOK_CLASS" && action.classId && action.time) {
       const bookingId = `book-${Date.now()}`;
       await BookedClass.findOneAndUpdate(
-        { userId, classId: action.classId },
+        { userId: cleanUserId, classId: action.classId },
         { 
           id: bookingId, 
-          userId, 
+          userId: cleanUserId, 
           classId: action.classId, 
           className: action.className || CLASS_NAMES[action.classId] || action.classId, 
           time: action.time, 
           bookedAt: new Date() 
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: "after" }
       );
       return { 
-        ...action, 
+        type: action.type,
+        classId: action.classId,
+        className: action.className,
+        time: action.time,
         bookingId, 
         status: "success", 
         statusMessage: `Reserva confirmada na aula de ${action.className} às ${action.time}!` 
       };
     } else if (action.type === "CANCEL_CLASS" && action.classId) {
-      await BookedClass.deleteOne({ userId, classId: action.classId });
-      return { ...action, status: "success", statusMessage: `Reserva cancelada com sucesso.` };
+      await BookedClass.deleteOne({ userId: cleanUserId, classId: action.classId });
+      return { 
+        type: action.type,
+        classId: action.classId,
+        className: action.className,
+        status: "success", 
+        statusMessage: `Reserva cancelada com sucesso.` 
+      };
     }
   } catch (error) {
-    console.error("⚠️ Erro ao gravar agendamento da Vic no MongoDB:", error);
+    console.error("⚠️ Erro ao gravar no MongoDB via Vic:", error);
   }
   return null;
 }
@@ -294,7 +304,7 @@ async function saveChatMessageToDb(sessionId: string | undefined, userId: string
   if (!sessionId || !userId || !content) return;
   try {
     const msgId = "msg-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
-    await ChatMessage.create({ id: msgId, sessionId, userId, role, content, action, timestamp: new Date() });
+    await ChatMessage.create({ id: msgId, sessionId, userId: String(userId), role, content, action, timestamp: new Date() });
 
     if (role === "user") {
       const titleSnippet = content.length > 25 ? content.substring(0, 25) + "..." : content;
@@ -464,7 +474,7 @@ app.post("/api/classes/book", async (req: Request, res: Response) => {
     await BookedClass.findOneAndUpdate(
       { userId, classId },
       { id: bookingId, userId, classId, className: className || CLASS_NAMES[classId] || classId, time, bookedAt: new Date() },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: "after" }
     );
 
     return res.json({
@@ -518,51 +528,8 @@ app.get("/api/health", (_req: Request, res: Response) => {
 });
 
 // ============================================================
-// VIC CHAT ASSISTANT ENDPOINT (VERSÃO DEFINITIVA E BLINDADA)
+// VIC CHAT ASSISTANT ENDPOINT (VERSÃO DEFINITIVA & BLINDADA)
 // ============================================================
-
-async function processVicActionInDatabase(action: any, userId: string) {
-  if (!action || !userId) return null;
-  try {
-    const cleanUserId = String(userId);
-    if (action.type === "BOOK_CLASS" && action.classId && action.time) {
-      const bookingId = `book-${Date.now()}`;
-      await BookedClass.findOneAndUpdate(
-        { userId: cleanUserId, classId: action.classId },
-        { 
-          id: bookingId, 
-          userId: cleanUserId, 
-          classId: action.classId, 
-          className: action.className || action.classId, 
-          time: action.time, 
-          bookedAt: new Date() 
-        },
-        { upsert: true, new: true }
-      );
-      return { 
-        type: action.type,
-        classId: action.classId,
-        className: action.className,
-        time: action.time,
-        bookingId, 
-        status: "success", 
-        statusMessage: `Reserva confirmada na aula de ${action.className} às ${action.time}!` 
-      };
-    } else if (action.type === "CANCEL_CLASS" && action.classId) {
-      await BookedClass.deleteOne({ userId: cleanUserId, classId: action.classId });
-      return { 
-        type: action.type,
-        classId: action.classId,
-        className: action.className,
-        status: "success", 
-        statusMessage: `Reserva cancelada com sucesso.` 
-      };
-    }
-  } catch (error) {
-    console.error("⚠️ Erro ao gravar no MongoDB via Vic:", error);
-  }
-  return null;
-}
 
 app.post("/api/vic/chat", async (req: Request, res: Response) => {
   try {
@@ -581,16 +548,22 @@ app.post("/api/vic/chat", async (req: Request, res: Response) => {
       executedAction = await processVicActionInDatabase(detectedAction, cleanUserId);
     }
 
-    // 2. Busca perfil e contexto do utilizador de forma segura
+    // 2. Busca perfil e contexto do utilizador de forma segura (sem forçar cast de _id)
     let userContext = "Aluno participante da MoveFIT.";
     if (mongoose.connection.readyState === 1 && cleanUserId) {
       try {
-        const user = await User.findOne({ $or: [{ id: cleanUserId }, { _id: cleanUserId }] });
+        let user = await User.findOne({ id: cleanUserId });
+
+        // Se não achou pelo campo id e cleanUserId tem exatamente 24 hex chars, tenta por _id
+        if (!user && mongoose.Types.ObjectId.isValid(cleanUserId)) {
+          user = await User.findById(cleanUserId);
+        }
+
         if (user) {
           userContext = `Nome: ${user.fullName}, Nível: ${user.trainingLevel}, Restrições: ${user.medicalNotes}`;
         }
       } catch (e) {
-        console.warn("⚠️ Erro ao buscar usuário para contexto da Vic:", e);
+        console.warn("⚠️ Aviso ao buscar usuário para contexto da Vic:", e);
       }
     }
 
@@ -651,11 +624,10 @@ Contexto do aluno: ${userContext}`;
     return res.json({ response: replyText, action: executedAction });
 
   } catch (error: any) {
-    console.error("❌ Erro fatal no endpoint do chat da Vic:", error?.message || error);
+    console.error("❌ Erro no endpoint do chat da Vic:", error?.message || error);
     
-    // Fallback amigável em caso de erro crítico para não deixar o utilizador na mão
     return res.status(200).json({
-      response: "Agendamento registrado! Verifique suas aulas ativas no menu de perfil.",
+      response: "Recebi seu pedido! Verifique se a sua vaga já está ativa na aba de agendamentos.",
       action: null,
     });
   }
@@ -702,7 +674,7 @@ app.post("/api/vic/speech", async (req: Request, res: Response) => {
 app.get("/api/vic/sessions/:userId", async (req: Request, res: Response) => {
   try {
     if (mongoose.connection.readyState !== 1) return res.json([]);
-    const sessions = await ChatSession.find({ userId: req.params.userId }).sort({ createdAt: -1 });
+    const sessions = await ChatSession.find({ userId: String(req.params.userId) }).sort({ createdAt: -1 });
     return res.json(sessions);
   } catch (error) {
     return res.status(200).json([]);
@@ -716,7 +688,7 @@ app.post("/api/vic/sessions", async (req: Request, res: Response) => {
     if (mongoose.connection.readyState !== 1) {
       return res.status(503).json({ error: "Banco de dados inicializando." });
     }
-    const session = await ChatSession.create({ id: sessionId, userId, title: title || "Nova conversa com a Vic" });
+    const session = await ChatSession.create({ id: sessionId, userId: String(userId), title: title || "Nova conversa com a Vic" });
     return res.status(201).json(session);
   } catch (error) {
     return res.status(500).json({ error: "Erro ao criar conversa." });
