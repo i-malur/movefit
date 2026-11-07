@@ -222,11 +222,10 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
 
         {bookingMessage && (
           <div
-            className={`p-3.5 rounded-xl text-xs sm:text-sm flex items-center gap-2.5 ${
-              bookingMessage.type === "success"
+            className={`p-3.5 rounded-xl text-xs sm:text-sm flex items-center gap-2.5 ${bookingMessage.type === "success"
                 ? "bg-[#00C0A3]/15 text-[#00C0A3] border border-[#00C0A3]/40"
                 : "bg-red-500/15 text-red-300 border border-red-500/40"
-            }`}
+              }`}
           >
             {bookingMessage.type === "success" ? (
               <CheckCircle2 className="w-4 h-4 text-[#00C0A3] shrink-0" />
