@@ -495,7 +495,12 @@ app.post("/api/classes/cancel", async (req: Request, res: Response) => {
       return res.status(503).json({ error: "Banco de dados inicializando." });
     }
 
-    const result = await BookedClass.deleteOne({ userId, classId });
+    const cleanUserId = String(userId);
+    const result = await BookedClass.deleteOne({
+      $or: [{ userId: cleanUserId }, { userId: userId }],
+      classId,
+    });
+    
     if (result.deletedCount === 0) {
       return res.status(400).json({ error: "Nenhum agendamento encontrado para cancelar." });
     }
@@ -506,15 +511,26 @@ app.post("/api/classes/cancel", async (req: Request, res: Response) => {
   }
 });
 
+// Busca robusta de agendamentos persistidos no MongoDB Atlas (Suporta F5 / Refresh)
 app.get(["/api/users/:userId/bookings", "/api/classes/booked/:userId"], async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
-    if (mongoose.connection.readyState === 1) {
-      const bookings = await BookedClass.find({ userId });
+    if (mongoose.connection.readyState === 1 && userId) {
+      const cleanUserId = String(userId);
+      
+      // Procura por ID direto ou por ObjectId correspondente
+      const bookings = await BookedClass.find({
+        $or: [
+          { userId: cleanUserId },
+          { userId: userId }
+        ]
+      }).sort({ bookedAt: -1 });
+
       return res.json(bookings);
     }
     return res.json([]);
   } catch (error) {
+    console.error("⚠️ Erro ao carregar agendamentos do usuário:", error);
     return res.status(200).json([]);
   }
 });
