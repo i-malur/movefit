@@ -169,11 +169,11 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
     }
   };
 
-// Função centralizada para calcular vagas reais globais do banco
+// Função centralizada para calcular vagas reais globais do banco (MongoDB Atlas)
   const getSlotAvailability = (classId: string, time: string) => {
     const normId = classId.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-    // Encontra a aula no array que veio do backend (GET /api/classes)
+    // Encontra a aula no array retornado pelo backend (GET /api/classes)
     const gymClass = classes.find((c) => {
       const cNorm = c.id.toLowerCase().replace(/[^a-z0-9]/g, "");
       return cNorm === normId || (normId === "funcional" && cNorm === "treinofuncional") || (normId === "treinofuncional" && cNorm === "funcional");
@@ -182,12 +182,12 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
     const slot = gymClass?.slots?.find((s: any) => s.time === time);
     const total = slot?.totalSpots ?? 30;
 
-    // 1. Pega as vagas disponíveis que O BANCO SQLITE calculou (SELECT COUNT)
+    // 1. Pega as vagas disponíveis calculadas pelo MongoDB no backend
     const remaining = slot?.availableSpots !== undefined ? slot.availableSpots : 30;
 
-    // 2. Verifica APENAS se a pessoa logada tem esta reserva (para pintar o botão de "Inscrito")
+    // 2. Verifica se o usuário logado possui esta reserva ativa
     const isBooked = bookedClasses.some((b) => {
-      const bNorm = b.classId.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const bNorm = (b.classId || "").toLowerCase().replace(/[^a-z0-9]/g, "");
       return (bNorm === normId || (normId === "funcional" && bNorm === "treinofuncional") || (normId === "treinofuncional" && bNorm === "funcional")) && b.time === time;
     });
 

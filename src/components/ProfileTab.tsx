@@ -30,7 +30,6 @@ import {
   X,
   Save,
   ShieldCheck,
-  Info,
 } from "lucide-react";
 
 interface ProfileTabProps {
@@ -54,13 +53,13 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   onNavigateToClasses,
   onNavigateToVic,
 }) => {
-  // Sub-tabs in Profile: "recommendations" | "classes"
+  // Sub-tabs no Perfil: "recommendations" | "classes"
   const [activeSection, setActiveSection] = useState<"recommendations" | "classes">("recommendations");
 
-  // Recommendation category filter: "all" | "treino" | "aquecimento" | "exercicio"
+  // Filtro de categorias: "all" | "treino" | "aquecimento" | "exercicio"
   const [categoryFilter, setCategoryFilter] = useState<"all" | RecommendationCategory>("all");
 
-  // Edit Profile Modal / Form State
+  // Modal / Estado de Edição de Perfil
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editFullName, setEditFullName] = useState(user.fullName);
   const [editEmail, setEditEmail] = useState(user.email);
@@ -70,13 +69,13 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
   const [editErrors, setEditErrors] = useState<string[]>([]);
   const [editSuccessMessage, setEditSuccessMessage] = useState<string | null>(null);
 
-  // Copy-to-clipboard state
+  // Estado de cópia para área de transferência
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Audio Speech state for saved recommendations
+  // Estado de reprodução de voz
   const [speakingId, setSpeakingId] = useState<string | null>(null);
 
-  // Initials
+  // Inicials do utilizador
   const initials = user.fullName
     .split(/\s+/)
     .filter(Boolean)
@@ -84,7 +83,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     .map((word) => word[0].toUpperCase())
     .join("");
 
-  // Start editing with fresh values
   const handleOpenEdit = () => {
     setEditFullName(user.fullName);
     setEditEmail(user.email);
@@ -96,7 +94,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     setIsEditingProfile(true);
   };
 
-  // Submit profile edits
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     setEditErrors([]);
@@ -104,21 +101,18 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
 
     const errors: string[] = [];
 
-    // 1. Nome Completo: min 5 chars, at least 2 words
     const trimmedName = editFullName.trim();
     const words = trimmedName.split(/\s+/).filter(Boolean);
     if (trimmedName.length < 5 || words.length < 2) {
       errors.push("Nome Completo: informe ao menos nome e sobrenome (mínimo 5 caracteres).");
     }
 
-    // 2. Email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const trimmedEmail = editEmail.trim();
     if (!trimmedEmail || !emailRegex.test(trimmedEmail)) {
       errors.push("E-mail: informe um endereço de e-mail válido.");
     }
 
-    // 3. Senha (se preenchida, deve ter ao menos 8 chars)
     if (editPassword.trim() && editPassword.trim().length < 8) {
       errors.push("Nova Senha: se desejar alterar, a senha deve ter pelo menos 8 caracteres.");
     }
@@ -151,7 +145,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     }
   };
 
-  // Copy recommendation content
   const handleCopyContent = (rec: SavedRecommendation) => {
     if (navigator?.clipboard?.writeText) {
       navigator.clipboard.writeText(`${rec.title}\n\n${rec.content}`);
@@ -160,7 +153,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     }
   };
 
-  // Speak recommendation content using Web Speech API
   const handleSpeakContent = (rec: SavedRecommendation) => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) {
       alert("A síntese de voz não é suportada neste navegador.");
@@ -181,18 +173,12 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
     utterance.rate = 1.05;
     utterance.pitch = 1.08;
 
-    utterance.onend = () => {
-      setSpeakingId(null);
-    };
-
-    utterance.onerror = () => {
-      setSpeakingId(null);
-    };
+    utterance.onend = () => setSpeakingId(null);
+    utterance.onerror = () => setSpeakingId(null);
 
     window.speechSynthesis.speak(utterance);
   };
 
-  // Filter recommendations
   const filteredRecommendations = savedRecommendations.filter((rec) => {
     if (categoryFilter === "all") return true;
     return rec.category === categoryFilter;
@@ -230,15 +216,11 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
 
   return (
     <div className="space-y-6 pb-12">
-      {/* ========================================================
-          USER PROFILE HERO CARD
-      ======================================================== */}
+      {/* USER PROFILE HERO CARD */}
       <div className="bg-[#292433] border border-[#3E374C] rounded-2xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
-        {/* Subtle decorative glow */}
         <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-bl from-[#845EC2]/20 via-[#00C0A3]/10 to-transparent rounded-full blur-3xl pointer-events-none"></div>
 
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
-          {/* Left: Avatar + Details */}
           <div className="flex items-start sm:items-center gap-4 sm:gap-5">
             <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-tr from-[#845EC2] via-[#6d41b5] to-[#00C0A3] p-[2px] shadow-xl shrink-0">
               <div className="w-full h-full bg-[#1E1B24] rounded-[14px] flex items-center justify-center text-white font-extrabold text-2xl sm:text-3xl">
@@ -257,7 +239,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                 </span>
               </div>
 
-              {/* Badges bar */}
               <div className="flex items-center gap-2.5 mt-2 flex-wrap text-xs">
                 <span className="inline-flex items-center gap-1.5 bg-[#1E1B24] px-3 py-1 rounded-lg border border-[#3E374C] font-mono font-medium text-white shadow-sm">
                   <IdCard className="w-3.5 h-3.5 text-[#00C0A3]" />
@@ -283,7 +264,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
             </div>
           </div>
 
-          {/* Right: Actions */}
           <div className="flex items-center gap-3 self-start lg:self-center">
             <button
               id="btn-edit-profile"
@@ -296,7 +276,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
           </div>
         </div>
 
-        {/* Quick Stats Bar */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-[#3E374C]">
           <div className="bg-[#1E1B24] border border-[#3E374C] rounded-xl p-3 text-center">
             <span className="block text-[11px] text-[#B0A8B9]">Aulas Agendadas</span>
@@ -324,13 +303,10 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         </div>
       </div>
 
-      {/* ========================================================
-          EDIT PROFILE MODAL / FORM
-      ======================================================== */}
+      {/* EDIT PROFILE MODAL */}
       {isEditingProfile && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#292433] border border-[#3E374C] rounded-2xl w-full max-w-lg p-6 shadow-2xl relative animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
-            {/* Header */}
             <div className="flex items-center justify-between pb-4 mb-4 border-b border-[#3E374C]">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-[#845EC2]/20 border border-[#845EC2]/30 flex items-center justify-center">
@@ -351,7 +327,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
               </button>
             </div>
 
-            {/* Error alerts */}
             {editErrors.length > 0 && (
               <div className="bg-red-500/10 border border-red-500/40 rounded-xl p-3.5 mb-4 text-xs text-red-200">
                 <div className="flex items-center gap-2 text-amber-300 font-semibold mb-1">
@@ -366,7 +341,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
               </div>
             )}
 
-            {/* Success alert */}
             {editSuccessMessage && (
               <div className="bg-[#00C0A3]/10 border border-[#00C0A3]/40 rounded-xl p-3.5 mb-4 text-xs text-[#00C0A3] flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-[#00C0A3] shrink-0" />
@@ -375,7 +349,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
             )}
 
             <form onSubmit={handleSaveProfile} className="space-y-4">
-              {/* Nome Completo */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 mb-1">
                   Nome Completo <span className="text-red-400">*</span>
@@ -389,7 +362,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                 />
               </div>
 
-              {/* E-mail */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 mb-1">
                   E-mail <span className="text-red-400">*</span>
@@ -403,7 +375,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                 />
               </div>
 
-              {/* Nível de Treino */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 mb-1">
                   Nível de Treino <span className="text-red-400">*</span>
@@ -417,12 +388,8 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                   <option value="Intermediário">Intermediário</option>
                   <option value="Avançado">Avançado</option>
                 </select>
-                <p className="text-[11px] text-zinc-400 mt-1">
-                  A Vic adapta os treinos e aquecimentos ao nível selecionado.
-                </p>
               </div>
 
-              {/* Observações Médicas */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 mb-1">
                   Observações Médicas ou Restrições
@@ -431,12 +398,11 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                   type="text"
                   value={editMedicalNotes}
                   onChange={(e) => setEditMedicalNotes(e.target.value)}
-                  placeholder="Ex: Nenhuma, dor no joelho esquerdo, condromalácia..."
+                  placeholder="Ex: Nenhuma, dor no joelho esquerdo..."
                   className="w-full h-10 px-3.5 bg-[#1E1B24] border border-[#3E374C] rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-[#00C0A3] focus:ring-1 focus:ring-[#00C0A3] text-sm"
                 />
               </div>
 
-              {/* Nova Senha (Opcional) */}
               <div>
                 <label className="block text-xs font-semibold text-zinc-300 mb-1">
                   Nova Senha <span className="text-zinc-500 font-normal">(Deixe em branco para manter a atual)</span>
@@ -450,20 +416,15 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                 />
               </div>
 
-              {/* Matrícula (Fixa e protegida) */}
               <div className="bg-[#1E1B24] border border-[#3E374C] rounded-xl p-3 flex items-start gap-2.5">
                 <IdCard className="w-4 h-4 text-[#00C0A3] shrink-0 mt-0.5" />
                 <div className="text-xs">
                   <span className="font-semibold text-zinc-300">
                     Matrícula Oficial MoveFIT: <strong className="text-white font-mono">{user.matricula}</strong>
                   </span>
-                  <p className="text-zinc-400 text-[11px] mt-0.5">
-                    O número de matrícula é oficial e intransferível. Para quaisquer alterações cadastrais de matrícula, consulte a recepção física.
-                  </p>
                 </div>
               </div>
 
-              {/* Action Buttons */}
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#3E374C]">
                 <button
                   type="button"
@@ -485,9 +446,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         </div>
       )}
 
-      {/* ========================================================
-          SUB-SECTION SWITCHER (Recomendações Salvas vs Aulas)
-      ======================================================== */}
+      {/* SUB-SECTION SWITCHER */}
       <div className="flex items-center justify-between gap-3 border-b border-[#3E374C] pb-3 flex-wrap">
         <div className="flex items-center gap-2">
           <button
@@ -495,16 +454,15 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
             onClick={() => setActiveSection("recommendations")}
             className={`py-2 px-4 rounded-xl font-bold text-xs sm:text-sm transition-all duration-200 flex items-center gap-2 cursor-pointer ${
               activeSection === "recommendations"
-                ? "bg-[#845EC2] text-white shadow-lg glow-purple-sm border border-[#9b72db]"
+                ? "bg-[#845EC2] text-white shadow-lg border border-[#9b72db]"
                 : "bg-[#292433] text-[#B0A8B9] hover:text-white border border-[#3E374C]"
             }`}
           >
             <div className="w-8 h-8 rounded-full overflow-hidden border border-[#00C0A3]/60 shrink-0">
               <img
-                src="assets/foto_vicIA.png"
+                src="/assets/foto_vicIA.png"
                 alt="Vic"
                 className="w-full h-full object-cover object-[center_20%]"
-                referrerPolicy="no-referrer"
               />
             </div>
             Recomendações Salvas da Vic
@@ -518,7 +476,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
             onClick={() => setActiveSection("classes")}
             className={`py-2 px-4 rounded-xl font-bold text-xs sm:text-sm transition-all duration-200 flex items-center gap-2 cursor-pointer ${
               activeSection === "classes"
-                ? "bg-[#00C0A3] text-white shadow-lg glow-turquoise border border-[#00C0A3]"
+                ? "bg-[#00C0A3] text-white shadow-lg border border-[#00C0A3]"
                 : "bg-[#292433] text-[#B0A8B9] hover:text-white border border-[#3E374C]"
             }`}
           >
@@ -530,7 +488,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
           </button>
         </div>
 
-        {/* Quick shortcut to chat with Vic */}
         <button
           onClick={onNavigateToVic}
           className="text-xs font-semibold text-[#00C0A3] hover:text-white hover:underline inline-flex items-center gap-1.5 cursor-pointer ml-auto"
@@ -540,12 +497,9 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         </button>
       </div>
 
-      {/* ========================================================
-          SECTION 1: RECOMENDAÇÕES SALVAS DA VIC
-      ======================================================== */}
+      {/* RECOMENDAÇÕES SALVAS */}
       {activeSection === "recommendations" && (
         <div className="space-y-4">
-          {/* Category Filter Pills */}
           {savedRecommendations.length > 0 && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-[#B0A8B9] font-medium mr-1">Filtrar por:</span>
@@ -598,23 +552,20 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
             </div>
           )}
 
-          {/* Empty State */}
           {savedRecommendations.length === 0 ? (
             <div className="bg-[#292433] border border-[#3E374C] rounded-2xl p-8 sm:p-12 text-center max-w-2xl mx-auto">
-              <div className="relative w-25 h-25 rounded-full border-2 border-[#00C0A3] shadow-lg shadow-[#00C0A3]/20 overflow-hidden mx-auto mb-4 bg-[#1E1B24]">
+              <div className="relative w-24 h-24 rounded-full border-2 border-[#00C0A3] shadow-lg shadow-[#00C0A3]/20 overflow-hidden mx-auto mb-4 bg-[#1E1B24]">
                 <img
-                  src="assets/foto_vicIA.png"
+                  src="/assets/foto_vicIA.png"
                   alt="Vic - Personal MoveFIT"
                   className="w-full h-full object-cover object-[center_20%]"
-                  referrerPolicy="no-referrer"
                 />
-                <span className="absolute bottom-0 right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-[#292433]" title="Vic Online"></span>
               </div>
               <h3 className="text-lg font-bold text-white mb-2">
                 Nenhuma recomendação salva ainda
               </h3>
               <p className="text-xs sm:text-sm text-[#B0A8B9] leading-relaxed max-w-md mx-auto mb-6">
-                Converse com a <strong>Vic</strong> para receber séries personalizadas de treino, aquecimentos obrigatórios e orientações de exercícios. Em cada resposta, basta clicar em <strong>"Salvar Recomendação"</strong> para guardar aqui!
+                Converse com a <strong>Vic</strong> no chat para salvar séries de treino e recomendações diretamente no seu perfil!
               </p>
               <button
                 onClick={onNavigateToVic}
@@ -622,16 +573,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
               >
                 <Sparkles className="w-4 h-4" />
                 Pedir Treino à Vic no Chat
-              </button>
-            </div>
-          ) : filteredRecommendations.length === 0 ? (
-            <div className="bg-[#292433] border border-[#3E374C] rounded-2xl p-8 text-center">
-              <p className="text-sm text-[#B0A8B9]">Nenhuma recomendação encontrada nesta categoria.</p>
-              <button
-                onClick={() => setCategoryFilter("all")}
-                className="mt-3 text-xs text-[#00C0A3] hover:underline font-semibold cursor-pointer"
-              >
-                Ver todas as recomendações ({savedRecommendations.length})
               </button>
             </div>
           ) : (
@@ -646,18 +587,15 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                     className="bg-[#292433] border border-[#3E374C] hover:border-[#845EC2]/50 rounded-2xl p-5 shadow-lg flex flex-col justify-between transition-all duration-200 relative group"
                   >
                     <div>
-                      {/* Top Meta */}
                       <div className="flex items-center justify-between gap-2 mb-2.5">
                         <div className="flex items-center gap-2">
-                          <span
-                            className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg border ${badge.className}`}
-                          >
+                          <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg border ${badge.className}`}>
                             {badge.icon}
                             {badge.label}
                           </span>
                           <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-[#00C0A3]">
                             <span className="w-3.5 h-3.5 rounded-full overflow-hidden border border-[#00C0A3]/60 inline-block align-middle">
-                              <img src="assets/foto_vic.jpeg" alt="Vic" className="w-full h-full object-cover object-[center_20%]" />
+                              <img src="/assets/foto_vicIA.png" alt="Vic" className="w-full h-full object-cover object-[center_20%]" />
                             </span>
                             Vic
                           </span>
@@ -669,66 +607,50 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                         </span>
                       </div>
 
-                      {/* Title */}
-                      <h4 className="text-base font-bold text-white mb-2">
-                        {rec.title}
-                      </h4>
+                      <h4 className="text-base font-bold text-white mb-2">{rec.title}</h4>
 
-                      {/* Content preview/body */}
                       <div className="bg-[#1E1B24] border border-[#3E374C]/80 rounded-xl p-3.5 text-xs text-zinc-200 leading-relaxed whitespace-pre-wrap max-h-56 overflow-y-auto">
                         {rec.content}
                       </div>
                     </div>
 
-                    {/* Bottom Action buttons */}
                     <div className="flex items-center justify-between gap-2 pt-3 mt-3 border-t border-[#3E374C]">
                       <div className="flex items-center gap-2">
-                        {/* Copy button */}
                         <button
                           type="button"
                           onClick={() => handleCopyContent(rec)}
                           className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#1E1B24] hover:bg-[#342f40] text-zinc-300 hover:text-white border border-[#3E374C] text-[11px] font-semibold transition-colors cursor-pointer"
-                          title="Copiar texto para área de transferência"
                         >
                           {copiedId === rec.id ? (
                             <>
-                              <Check className="w-3.5 h-3.5 text-[#00C0A3]" />
-                              Copiado!
+                              <Check className="w-3.5 h-3.5 text-[#00C0A3]" /> Copiado!
                             </>
                           ) : (
                             <>
-                              <Copy className="w-3.5 h-3.5" />
-                              Copiar
+                              <Copy className="w-3.5 h-3.5" /> Copiar
                             </>
                           )}
                         </button>
 
-                        {/* Listen with TTS */}
                         <button
                           type="button"
                           onClick={() => handleSpeakContent(rec)}
                           className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
-                            isSpeakingThis
-                              ? "bg-rose-500/20 text-rose-300 border-rose-500/30"
-                              : "bg-[#00C0A3]/10 hover:bg-[#00C0A3]/20 text-[#00C0A3] border-[#00C0A3]/30"
+                            isSpeakingThis ? "bg-rose-500/20 text-rose-300 border-rose-500/30" : "bg-[#00C0A3]/10 hover:bg-[#00C0A3]/20 text-[#00C0A3] border-[#00C0A3]/30"
                           }`}
-                          title="Ouvir recomendação em áudio"
                         >
                           {isSpeakingThis ? (
                             <>
-                              <VolumeX className="w-3.5 h-3.5" />
-                              Parar Áudio
+                              <VolumeX className="w-3.5 h-3.5" /> Parar
                             </>
                           ) : (
                             <>
-                              <Volume2 className="w-3.5 h-3.5" />
-                              Ouvir
+                              <Volume2 className="w-3.5 h-3.5" /> Ouvir
                             </>
                           )}
                         </button>
                       </div>
 
-                      {/* Remove button */}
                       <button
                         type="button"
                         onClick={() => {
@@ -737,7 +659,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                           }
                         }}
                         className="text-zinc-400 hover:text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors cursor-pointer"
-                        title="Remover recomendação"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -750,9 +671,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         </div>
       )}
 
-      {/* ========================================================
-          SECTION 2: MINHAS AULAS AGENDADAS
-      ======================================================== */}
+      {/* MINHAS AULAS AGENDADAS */}
       {activeSection === "classes" && (
         <div className="space-y-4">
           {bookedClasses.length === 0 ? (
@@ -764,7 +683,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                 Você não possui aulas agendadas no momento
               </h3>
               <p className="text-xs sm:text-sm text-[#B0A8B9] max-w-md mx-auto mb-6">
-                Todas as aulas duram 50 minutos e contam com turmas de no máximo 15 alunos. Reserve sua vaga na grade oficial!
+                Todas as aulas duram 50 minutos. Reserve sua vaga na grade oficial!
               </p>
               <button
                 onClick={onNavigateToClasses}
@@ -787,59 +706,59 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {bookedClasses.map((booking) => (
-                  <div
-                    key={booking.bookingId}
-                    className="bg-[#292433] border border-[#3E374C] rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-lg relative overflow-hidden"
-                  >
-                    {/* Top Accent */}
-                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#845EC2] to-[#00C0A3]"></div>
+                {bookedClasses.map((booking: any) => {
+                  const targetBookingId = booking.id || booking.bookingId;
+                  const targetClassName = booking.className || "Aula Coletiva";
 
-                    <div>
-                      <div className="flex items-start justify-between gap-3 mb-2">
-                        <div>
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-[#00C0A3] bg-[#00C0A3]/10 px-2 py-0.5 rounded border border-[#00C0A3]/30">
-                            Vaga Confirmada
+                  return (
+                    <div
+                      key={targetBookingId}
+                      className="bg-[#292433] border border-[#3E374C] rounded-2xl p-4 sm:p-5 flex flex-col justify-between shadow-lg relative overflow-hidden"
+                    >
+                      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#845EC2] to-[#00C0A3]"></div>
+
+                      <div>
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-[#00C0A3] bg-[#00C0A3]/10 px-2 py-0.5 rounded border border-[#00C0A3]/30">
+                              Vaga Confirmada
+                            </span>
+                            <h4 className="text-base sm:text-lg font-black text-white mt-1.5">
+                              {targetClassName}
+                            </h4>
+                          </div>
+
+                          <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-[#1E1B24] text-white border border-[#3E374C]">
+                            {booking.time}
                           </span>
-                          <h4 className="text-base sm:text-lg font-black text-white mt-1.5">
-                            {booking.className}
-                          </h4>
                         </div>
 
-                        <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-[#1E1B24] text-white border border-[#3E374C]">
-                          {booking.time}
+                        <div className="space-y-1.5 mt-3 text-xs text-zinc-300">
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-3.5 h-3.5 text-[#00C0A3]" />
+                            <span>Duração oficial: <strong>50 minutos</strong></span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-3 mt-4 border-t border-[#3E374C] flex items-center justify-between">
+                        <span className="text-[10px] text-[#B0A8B9]">
+                          Matrícula: {user.matricula}
                         </span>
-                      </div>
-
-                      <div className="space-y-1.5 mt-3 text-xs text-zinc-300">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-3.5 h-3.5 text-[#845EC2]" />
-                          <span>Dias: <strong>{booking.days}</strong></span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-3.5 h-3.5 text-[#00C0A3]" />
-                          <span>Duração oficial: <strong>50 minutos</strong></span>
-                        </div>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Deseja cancelar sua reserva para ${targetClassName} (${booking.time})?`)) {
+                              onCancelBooking(targetBookingId);
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-300 hover:text-red-200 border border-red-500/30 text-xs font-semibold transition-colors cursor-pointer"
+                        >
+                          Cancelar Reserva
+                        </button>
                       </div>
                     </div>
-
-                    <div className="pt-3 mt-4 border-t border-[#3E374C] flex items-center justify-between">
-                      <span className="text-[10px] text-[#B0A8B9]">
-                        Reservado para matrícula {user.matricula}
-                      </span>
-                      <button
-                        onClick={() => {
-                          if (confirm(`Deseja realmente cancelar sua reserva para ${booking.className} (${booking.time})?`)) {
-                            onCancelBooking(booking.bookingId);
-                          }
-                        }}
-                        className="px-3 py-1.5 rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-300 hover:text-red-200 border border-red-500/30 text-xs font-semibold transition-colors cursor-pointer"
-                      >
-                        Cancelar Reserva
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

@@ -13,10 +13,8 @@ import {
   Sparkles,
   Send,
   User as UserIcon,
-  RotateCcw,
   CheckCircle2,
   AlertTriangle,
-  Calendar,
   ArrowRight,
   Check,
   CalendarCheck2,
@@ -57,7 +55,6 @@ interface VicChatTabProps {
 // ============================================================
 // COMPONENTE DE CARD DEMONSTRATIVO DE EXERCÍCIO (YOUTUBE GUIADO)
 // ============================================================
-// Dicionário de tradução para garantir que qualquer termo em inglês vire Português
 const EXERCISE_TRANSLATIONS: Record<string, string> = {
   "jumping_jacks": "Polichinelo",
   "jumping jacks": "Polichinelo",
@@ -80,7 +77,6 @@ const EXERCISE_TRANSLATIONS: Record<string, string> = {
 const ExerciseCard: React.FC<{ exerciseName: string }> = ({ exerciseName }) => {
   const cleanKey = exerciseName.toLowerCase().replace(/_/g, " ").trim();
   
-  // Tenta traduzir ou formata o texto caso já esteja em português
   const portugueseName =
     EXERCISE_TRANSLATIONS[cleanKey] ||
     EXERCISE_TRANSLATIONS[exerciseName.toLowerCase()] ||
@@ -89,7 +85,6 @@ const ExerciseCard: React.FC<{ exerciseName: string }> = ({ exerciseName }) => {
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(" ");
 
-  // Busca no YouTube com a query em português
   const youtubeQuery = encodeURIComponent(`como fazer exercicio ${portugueseName} tecnica correta`);
   const youtubeUrl = `https://www.youtube.com/results?search_query=${youtubeQuery}`;
 
@@ -107,7 +102,6 @@ const ExerciseCard: React.FC<{ exerciseName: string }> = ({ exerciseName }) => {
         </div>
       </div>
 
-      {/* Card Visual Interativo */}
       <div className="w-full h-24 bg-[#292433] rounded-lg border border-[#3E374C] p-3 flex flex-col items-center justify-center text-center gap-1.5 relative overflow-hidden group">
         <Dumbbell className="w-7 h-7 text-[#845EC2] group-hover:scale-110 transition-transform" />
         <span className="text-[11px] font-medium text-zinc-300">
@@ -183,7 +177,6 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [showHistorySidebar, setShowHistorySidebar] = useState(false);
 
-  // Função auxiliar para processar e separar a tag [EXERCISES: ...] da mensagem da Vic
   const parseVicMessageContent = (content: string) => {
     const match = content.match(/\[EXERCISES:\s*(.*?)\]/i);
     if (!match) {
@@ -338,11 +331,14 @@ Como posso te ajudar com seus treinos hoje? Se quiser, posso agendar suas aulas 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Carregar histórico de sessões do usuário e selecionar/criar sessão ativa
+  // Carregar histórico de sessões do MongoDB Atlas
   useEffect(() => {
     if (user?.id) {
       fetch(`/api/vic/sessions/${user.id}`)
-        .then((res) => res.json())
+        .then((res) => {
+          if (!res.ok) return [];
+          return res.json();
+        })
         .then((data) => {
           if (Array.isArray(data)) {
             setSessions(data);
@@ -365,7 +361,7 @@ Como posso te ajudar com seus treinos hoje? Se quiser, posso agendar suas aulas 
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
-  // Função para criar uma nova sessão de conversa no SQLite
+  // Função para criar uma nova sessão no MongoDB
   const handleCreateNewChat = async () => {
     if (!user?.id) return;
     try {
@@ -405,12 +401,13 @@ O que vamos focar no treino de hoje?`,
     }
   };
 
-  // Função para selecionar um chat antigo do histórico
+  // Carregar mensagens de uma sessão salva no MongoDB
   const handleSelectSession = async (sessionId: string) => {
     setCurrentSessionId(sessionId);
     stopSpeaking();
     try {
       const res = await fetch(`/api/vic/messages/${sessionId}`);
+      if (!res.ok) return;
       const data = await res.json();
       if (Array.isArray(data) && data.length > 0) {
         setMessages(
@@ -454,10 +451,7 @@ O que vamos focar no treino de hoje?`,
       const response = await fetch("/api/vic/speech", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text,
-          voice: voiceKey,
-        }),
+        body: JSON.stringify({ text, voice: voiceKey }),
       });
 
       if (!response.ok) throw new Error("Erro na API de voz");
@@ -565,6 +559,7 @@ O que vamos focar no treino de hoje?`,
     `Dicas de treino para nível ${user.trainingLevel}`,
   ];
 
+  // Enviar Mensagem para o Backend MongoDB
   const handleSendMessage = async (textToSend?: string) => {
     const messageContent = (textToSend || inputPrompt).trim();
     if (!messageContent || isLoading) return;
@@ -586,12 +581,14 @@ O que vamos focar no treino de hoje?`,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: messageContent,
-          history: messages.map((m) => ({ role: m.role, content: m.content })),
-          user,
-          bookedClasses,
-          sessionId: currentSessionId, // Passa o sessionId para persistir no SQLite
+          userId: user?.id,
+          sessionId: currentSessionId,
         }),
       });
+
+      if (!response.ok) {
+        throw new Error("Erro na resposta do servidor.");
+      }
 
       const data = await response.json();
       let executedAction: ChatAction | undefined = undefined;
@@ -607,17 +604,18 @@ O que vamos focar no treino de hoje?`,
         }
       }
 
+      const replyText = data.response || data.reply || "Bora focar nos treinos! 💪";
+
       const vicReply: ChatMessage = {
         id: "msg-" + Date.now(),
         role: "assistant",
-        content: data.reply || "Bora focar nos treinos! 💪",
+        content: replyText,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         action: executedAction,
       };
 
       setMessages((prev) => [...prev, vicReply]);
 
-      // Atualizar lista de sessões no estado local
       if (currentSessionId) {
         setSessions((prev) =>
           prev.map((s) =>
@@ -794,9 +792,8 @@ O que vamos focar no treino de hoje?`,
         </div>
       </div>
 
-      {/* CONTAINER PRINCIPAL DO CHAT + BARRA LATERAL DE HISTÓRICO */}
+      {/* CONTAINER PRINCIPAL DO CHAT + HISTÓRICO DE CONVERSAS */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {/* BARRA LATERAL DE HISTÓRICO (EXIBIDA/OCULTA VIA BOTÃO) */}
         {showHistorySidebar && (
           <div className="md:col-span-1 bg-[#292433] border border-[#3E374C] rounded-2xl p-4 shadow-xl flex flex-col h-[520px] overflow-hidden">
             <div className="flex items-center justify-between mb-3 border-b border-[#3E374C] pb-2">
@@ -855,7 +852,6 @@ O que vamos focar no treino de hoje?`,
                       <span className="text-[10px] opacity-60">{msg.timestamp}</span>
                     </div>
 
-                    {/* RENDERIZAÇÃO DA MENSAGEM DA VIC COM RENDERIZADOR INTERATIVO */}
                     {isVic ? (
                       (() => {
                         const { textContent, exercisesList } = parseVicMessageContent(msg.content);
@@ -971,7 +967,7 @@ O que vamos focar no treino de hoje?`,
             <div ref={messagesEndRef} />
           </div>
 
-          {/* SUGESTÕES */}
+          {/* SUGESTÕES DE PROMPTS */}
           <div className="p-3 bg-[#1E1B24]/70 border-t border-[#3E374C] overflow-x-auto no-scrollbar flex items-center gap-2">
             <span className="text-[10px] font-semibold text-[#B0A8B9] uppercase tracking-wider shrink-0 mr-1">Sugestões:</span>
             {quickPrompts.map((prompt, idx) => (
@@ -986,7 +982,7 @@ O que vamos focar no treino de hoje?`,
             ))}
           </div>
 
-          {/* INPUT */}
+          {/* INPUT FORM */}
           <div className="p-4 bg-[#1E1B24] border-t border-[#3E374C]">
             {micPermissionError && (
               <div className="mb-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-200 flex items-start justify-between gap-3">
