@@ -172,7 +172,10 @@ const SavedRecommendationSchema = new Schema<ISavedRecommendation>({
 
 const SavedRecommendation = mongoose.model<ISavedRecommendation>("SavedRecommendation", SavedRecommendationSchema);
 
-// Lista expandida com mais modalidades e vagas limite customizadas
+// ============================================================
+// CONFIGURAÇÃO DAS AULAS E LIMITES DE VAGAS (6 MODALIDADES)
+// ============================================================
+
 const FULL_CLASSES_CONFIG = [
   {
     id: "pilates",
@@ -194,7 +197,7 @@ const FULL_CLASSES_CONFIG = [
     id: "spinning",
     name: "Spinning",
     category: "Cardio Alta Intensidade",
-    days: "Seg / Ter / Qua / Qui / Sex",
+    days: "Seg a Sex",
     iconName: "Bike",
     description: "Treino aeróbico dinâmico sobre bicicleta ergométrica.",
     slotsConfig: [
@@ -261,63 +264,8 @@ const FULL_CLASSES_CONFIG = [
   },
 ];
 
-// Endpoint /api/classes atualizado com cálculo de limite de vagas em tempo real
-app.get("/api/classes", async (_req: Request, res: Response) => {
-  try {
-    if (mongoose.connection.readyState === 1) {
-      const updatedClasses = await Promise.all(
-        FULL_CLASSES_CONFIG.map(async (cls) => {
-          const slotsWithSpots = await Promise.all(
-            cls.slotsConfig.map(async (slot) => {
-              const bookedCount = await BookedClass.countDocuments({ classId: cls.id, time: slot.time });
-              const totalSpots = slot.maxSpots;
-              return {
-                time: slot.time,
-                totalSpots,
-                bookedSpots: bookedCount,
-                availableSpots: Math.max(0, totalSpots - bookedCount),
-              };
-            })
-          );
-          return {
-            id: cls.id,
-            name: cls.name,
-            category: cls.category,
-            days: cls.days,
-            description: cls.description,
-            iconName: cls.iconName,
-            slots: slotsWithSpots,
-          };
-        })
-      );
-      return res.json(updatedClasses);
-    }
-
-    // Fallback sem banco de dados
-    return res.json(
-      FULL_CLASSES_CONFIG.map((cls) => ({
-        id: cls.id,
-        name: cls.name,
-        category: cls.category,
-        days: cls.days,
-        description: cls.description,
-        iconName: cls.iconName,
-        slots: cls.slotsConfig.map((s) => ({
-          time: s.time,
-          totalSpots: s.maxSpots,
-          bookedSpots: 0,
-          availableSpots: s.maxSpots,
-        })),
-      }))
-    );
-  } catch (error) {
-    return res.status(500).json({ error: "Erro ao carregar lista de aulas." });
-  }
-});
-
-
 // ============================================================
-// SEED AUTOMÁTICO
+// SEED AUTOMÁTICO COM UPSERT
 // ============================================================
 
 async function seedDatabase() {
@@ -341,21 +289,18 @@ async function seedDatabase() {
     }
 
     const classesData = [
-      { id: "pilates", name: "Pilates", category: "Flexibilidade & Core", days: "Seg/Qua/Sex", iconName: "Activity", description: "Fortalecimento do core, postura e flexibilidade." },
-      { id: "spinning", name: "Spinning", category: "Cardio Alta Intensidade", days: "Ter/Qui", iconName: "Bike", description: "Treino aeróbico dinâmico sobre bicicleta ergométrica." },
-      { id: "fitdance", name: "FitDance", category: "Ritmo & Queima", days: "Seg/Qua", iconName: "Music", description: "Aulas de dança dinâmicas com coreografias atuais." },
-      { id: "funcional", name: "Treino Funcional", category: "Condicionamento Total", days: "Ter/Qui", iconName: "Dumbbell", description: "Exercícios dinâmicos para agilidade, força e resistência." },
-      { id: "yoga", name: "Yoga & Mindfulness", category: "Bem-estar & Mente", days: "Ter/Qui", iconName: "Activity", description: "Conexão entre respiração, postura corporal e relaxamento." },
-      { id: "boxe", name: "Boxe Fitness", category: "Luta & Cardio", days: "Seg/Qua/Sex", iconName: "Dumbbell", description: "Técnicas de boxe combinadas com circuito de alta intensidade." },
+      { id: "pilates", name: "Pilates", category: "Flexibilidade & Core", days: "Seg / Qua / Sex", iconName: "Activity", description: "Fortalecimento do core, postura e flexibilidade." },
+      { id: "spinning", name: "Spinning", category: "Cardio Alta Intensidade", days: "Seg a Sex", iconName: "Bike", description: "Treino aeróbico dinâmico sobre bicicleta ergométrica." },
+      { id: "fitdance", name: "FitDance", category: "Ritmo & Queima", days: "Seg / Qua / Sex", iconName: "Music", description: "Aulas de dança dinâmicas com coreografias atuais." },
+      { id: "funcional", name: "Treino Funcional", category: "Condicionamento Total", days: "Ter / Qui / Sáb", iconName: "Dumbbell", description: "Exercícios dinâmicos para agilidade, força e resistência." },
+      { id: "yoga", name: "Yoga & Mindfulness", category: "Bem-estar & Mente", days: "Ter / Qui", iconName: "Activity", description: "Conexão entre respiração, postura corporal e relaxamento." },
+      { id: "boxe", name: "Boxe Fitness", category: "Luta & Cardio", days: "Seg / Qua / Sex", iconName: "Dumbbell", description: "Técnicas de boxe combinadas com circuito de alta intensidade." },
     ];
 
     for (const c of classesData) {
-      const exists = await GymClass.findOne({ id: c.id });
-      if (!exists) {
-        await GymClass.create(c);
-      }
+      await GymClass.findOneAndUpdate({ id: c.id }, c, { upsert: true, new: true });
     }
-    console.log("✅ Dados padrão do MongoDB validados!");
+    console.log("✅ Todas as 6 modalidades atualizadas no MongoDB Atlas!");
   } catch (err) {
     console.error("⚠️ Erro no seed do MongoDB:", err);
   }
@@ -376,6 +321,8 @@ const CLASS_NAMES: Record<string, string> = {
   spinning: "Spinning",
   fitdance: "FitDance",
   funcional: "Treino Funcional",
+  yoga: "Yoga & Mindfulness",
+  boxe: "Boxe Fitness",
 };
 
 function parseBookingIntent(text: string): { type: "BOOK_CLASS" | "CANCEL_CLASS"; classId: string; time?: string; className: string } | null {
@@ -386,6 +333,8 @@ function parseBookingIntent(text: string): { type: "BOOK_CLASS" | "CANCEL_CLASS"
     if (lower.includes("spinning") || lower.includes("bike")) return { type: "CANCEL_CLASS", classId: "spinning", className: "Spinning" };
     if (lower.includes("fitdance") || lower.includes("dança") || lower.includes("danca")) return { type: "CANCEL_CLASS", classId: "fitdance", className: "FitDance" };
     if (lower.includes("funcional")) return { type: "CANCEL_CLASS", classId: "funcional", className: "Treino Funcional" };
+    if (lower.includes("yoga")) return { type: "CANCEL_CLASS", classId: "yoga", className: "Yoga & Mindfulness" };
+    if (lower.includes("boxe")) return { type: "CANCEL_CLASS", classId: "boxe", className: "Boxe Fitness" };
   }
 
   const isBooking = lower.includes("agenda") || lower.includes("marca") || lower.includes("reserva") || lower.includes("quero fazer") || lower.includes("inscrever") || lower.includes("coloca meu nome");
@@ -395,10 +344,12 @@ function parseBookingIntent(text: string): { type: "BOOK_CLASS" | "CANCEL_CLASS"
     let className = "";
     let defaultTimes: string[] = [];
 
-    if (lower.includes("pilates")) { classId = "pilates"; className = "Pilates"; defaultTimes = ["07:00", "10:00", "18:00"]; }
-    else if (lower.includes("spinning") || lower.includes("bike")) { classId = "spinning"; className = "Spinning"; defaultTimes = ["06:30", "12:00", "19:30"]; }
-    else if (lower.includes("fitdance") || lower.includes("dança") || lower.includes("danca")) { classId = "fitdance"; className = "FitDance"; defaultTimes = ["11:00", "19:00"]; }
-    else if (lower.includes("funcional")) { classId = "funcional"; className = "Treino Funcional"; defaultTimes = ["07:30", "17:30", "18:30"]; }
+    if (lower.includes("pilates")) { classId = "pilates"; className = "Pilates"; defaultTimes = ["07:00", "09:00", "10:00", "16:00", "18:00", "19:00"]; }
+    else if (lower.includes("spinning") || lower.includes("bike")) { classId = "spinning"; className = "Spinning"; defaultTimes = ["06:30", "08:00", "12:00", "17:30", "19:30"]; }
+    else if (lower.includes("fitdance") || lower.includes("dança") || lower.includes("danca")) { classId = "fitdance"; className = "FitDance"; defaultTimes = ["09:30", "11:00", "18:30", "19:30"]; }
+    else if (lower.includes("funcional")) { classId = "funcional"; className = "Treino Funcional"; defaultTimes = ["07:30", "10:30", "17:30", "18:30"]; }
+    else if (lower.includes("yoga")) { classId = "yoga"; className = "Yoga & Mindfulness"; defaultTimes = ["07:00", "08:30", "19:00"]; }
+    else if (lower.includes("boxe")) { classId = "boxe"; className = "Boxe Fitness"; defaultTimes = ["12:00", "18:00", "20:00"]; }
 
     if (classId) {
       let selectedTime = defaultTimes[0];
@@ -578,39 +529,57 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
   }
 });
 
+// Endpoint ÚNICO para /api/classes com 6 modalidades
 app.get("/api/classes", async (_req: Request, res: Response) => {
-  const classesList = [
-    { id: "pilates", name: "Pilates", category: "Flexibilidade & Core", days: "Seg / Qua / Sex", description: "Fortalecimento do core, postura e flexibilidade.", iconName: "Activity", slots: ["07:00", "10:00", "18:00"] },
-    { id: "fitdance", name: "FitDance", category: "Ritmo & Queima", days: "Seg / Qua", description: "Gasto calórico elevado com coreografias dinâmicas.", iconName: "Music", slots: ["11:00", "19:00"] },
-    { id: "spinning", name: "Spinning", category: "Cardio Alta Intensidade", days: "Ter / Qui", description: "Treino aeróbico de alta intensidade em bike indoor.", iconName: "Bike", slots: ["06:30", "12:00", "19:30"] },
-    { id: "funcional", name: "Treino Funcional", category: "Condicionamento Total", days: "Ter / Qui", description: "Exercícios dinâmicos para força, agilidade e resistência.", iconName: "Dumbbell", slots: ["07:30", "17:30", "18:30"] },
-  ];
-
   try {
     if (mongoose.connection.readyState === 1) {
       const updatedClasses = await Promise.all(
-        classesList.map(async (cls) => {
+        FULL_CLASSES_CONFIG.map(async (cls) => {
           const slotsWithSpots = await Promise.all(
-            cls.slots.map(async (time) => {
-              const bookedCount = await BookedClass.countDocuments({ classId: cls.id, time });
-              const totalSpots = 30;
+            cls.slotsConfig.map(async (slot) => {
+              const bookedCount = await BookedClass.countDocuments({ classId: cls.id, time: slot.time });
+              const totalSpots = slot.maxSpots;
               return {
-                time,
+                time: slot.time,
                 totalSpots,
                 bookedSpots: bookedCount,
                 availableSpots: Math.max(0, totalSpots - bookedCount),
               };
             })
           );
-          return { ...cls, slots: slotsWithSpots };
+          return {
+            id: cls.id,
+            name: cls.name,
+            category: cls.category,
+            days: cls.days,
+            description: cls.description,
+            iconName: cls.iconName,
+            slots: slotsWithSpots,
+          };
         })
       );
       return res.json(updatedClasses);
     }
 
-    return res.json(classesList.map((cls) => ({ ...cls, slots: cls.slots.map((t) => ({ time: t, totalSpots: 30, bookedSpots: 0, availableSpots: 30 })) })));
+    // Fallback sem banco de dados
+    return res.json(
+      FULL_CLASSES_CONFIG.map((cls) => ({
+        id: cls.id,
+        name: cls.name,
+        category: cls.category,
+        days: cls.days,
+        description: cls.description,
+        iconName: cls.iconName,
+        slots: cls.slotsConfig.map((s) => ({
+          time: s.time,
+          totalSpots: s.maxSpots,
+          bookedSpots: 0,
+          availableSpots: s.maxSpots,
+        })),
+      }))
+    );
   } catch (error) {
-    return res.json(classesList.map((cls) => ({ ...cls, slots: cls.slots.map((t) => ({ time: t, totalSpots: 30, bookedSpots: 0, availableSpots: 30 })) })));
+    return res.status(500).json({ error: "Erro ao carregar lista de aulas." });
   }
 });
 
