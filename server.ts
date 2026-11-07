@@ -172,6 +172,150 @@ const SavedRecommendationSchema = new Schema<ISavedRecommendation>({
 
 const SavedRecommendation = mongoose.model<ISavedRecommendation>("SavedRecommendation", SavedRecommendationSchema);
 
+// Lista expandida com mais modalidades e vagas limite customizadas
+const FULL_CLASSES_CONFIG = [
+  {
+    id: "pilates",
+    name: "Pilates",
+    category: "Flexibilidade & Core",
+    days: "Seg / Qua / Sex",
+    iconName: "Activity",
+    description: "Fortalecimento do core, postura e flexibilidade.",
+    slotsConfig: [
+      { time: "07:00", maxSpots: 20 },
+      { time: "09:00", maxSpots: 20 },
+      { time: "10:00", maxSpots: 20 },
+      { time: "16:00", maxSpots: 20 },
+      { time: "18:00", maxSpots: 20 },
+      { time: "19:00", maxSpots: 20 },
+    ],
+  },
+  {
+    id: "spinning",
+    name: "Spinning",
+    category: "Cardio Alta Intensidade",
+    days: "Seg / Ter / Qua / Qui / Sex",
+    iconName: "Bike",
+    description: "Treino aeróbico dinâmico sobre bicicleta ergométrica.",
+    slotsConfig: [
+      { time: "06:30", maxSpots: 25 },
+      { time: "08:00", maxSpots: 25 },
+      { time: "12:00", maxSpots: 25 },
+      { time: "17:30", maxSpots: 25 },
+      { time: "19:30", maxSpots: 25 },
+    ],
+  },
+  {
+    id: "fitdance",
+    name: "FitDance",
+    category: "Ritmo & Queima",
+    days: "Seg / Qua / Sex",
+    iconName: "Music",
+    description: "Aulas de dança dinâmicas com coreografias atuais.",
+    slotsConfig: [
+      { time: "09:30", maxSpots: 30 },
+      { time: "11:00", maxSpots: 30 },
+      { time: "18:30", maxSpots: 30 },
+      { time: "19:30", maxSpots: 30 },
+    ],
+  },
+  {
+    id: "funcional",
+    name: "Treino Funcional",
+    category: "Condicionamento Total",
+    days: "Ter / Qui / Sáb",
+    iconName: "Dumbbell",
+    description: "Exercícios dinâmicos para agilidade, força e resistência.",
+    slotsConfig: [
+      { time: "07:30", maxSpots: 18 },
+      { time: "10:30", maxSpots: 18 },
+      { time: "17:30", maxSpots: 18 },
+      { time: "18:30", maxSpots: 18 },
+    ],
+  },
+  {
+    id: "yoga",
+    name: "Yoga & Mindfulness",
+    category: "Bem-estar & Mente",
+    days: "Ter / Qui",
+    iconName: "Activity",
+    description: "Conexão entre respiração, postura corporal e relaxamento.",
+    slotsConfig: [
+      { time: "07:00", maxSpots: 15 },
+      { time: "08:30", maxSpots: 15 },
+      { time: "19:00", maxSpots: 15 },
+    ],
+  },
+  {
+    id: "boxe",
+    name: "Boxe Fitness",
+    category: "Luta & Cardio",
+    days: "Seg / Qua / Sex",
+    iconName: "Dumbbell",
+    description: "Técnicas de boxe combinadas com circuito de alta intensidade.",
+    slotsConfig: [
+      { time: "12:00", maxSpots: 16 },
+      { time: "18:00", maxSpots: 16 },
+      { time: "20:00", maxSpots: 16 },
+    ],
+  },
+];
+
+// Endpoint /api/classes atualizado com cálculo de limite de vagas em tempo real
+app.get("/api/classes", async (_req: Request, res: Response) => {
+  try {
+    if (mongoose.connection.readyState === 1) {
+      const updatedClasses = await Promise.all(
+        FULL_CLASSES_CONFIG.map(async (cls) => {
+          const slotsWithSpots = await Promise.all(
+            cls.slotsConfig.map(async (slot) => {
+              const bookedCount = await BookedClass.countDocuments({ classId: cls.id, time: slot.time });
+              const totalSpots = slot.maxSpots;
+              return {
+                time: slot.time,
+                totalSpots,
+                bookedSpots: bookedCount,
+                availableSpots: Math.max(0, totalSpots - bookedCount),
+              };
+            })
+          );
+          return {
+            id: cls.id,
+            name: cls.name,
+            category: cls.category,
+            days: cls.days,
+            description: cls.description,
+            iconName: cls.iconName,
+            slots: slotsWithSpots,
+          };
+        })
+      );
+      return res.json(updatedClasses);
+    }
+
+    // Fallback sem banco de dados
+    return res.json(
+      FULL_CLASSES_CONFIG.map((cls) => ({
+        id: cls.id,
+        name: cls.name,
+        category: cls.category,
+        days: cls.days,
+        description: cls.description,
+        iconName: cls.iconName,
+        slots: cls.slotsConfig.map((s) => ({
+          time: s.time,
+          totalSpots: s.maxSpots,
+          bookedSpots: 0,
+          availableSpots: s.maxSpots,
+        })),
+      }))
+    );
+  } catch (error) {
+    return res.status(500).json({ error: "Erro ao carregar lista de aulas." });
+  }
+});
+
+
 // ============================================================
 // SEED AUTOMÁTICO
 // ============================================================
@@ -277,33 +421,33 @@ async function processVicActionInDatabase(action: any, userId: string) {
       const bookingId = `book-${Date.now()}`;
       await BookedClass.findOneAndUpdate(
         { userId: cleanUserId, classId: action.classId },
-        { 
-          id: bookingId, 
-          userId: cleanUserId, 
-          classId: action.classId, 
-          className: action.className || CLASS_NAMES[action.classId] || action.classId, 
-          time: action.time, 
-          bookedAt: new Date() 
+        {
+          id: bookingId,
+          userId: cleanUserId,
+          classId: action.classId,
+          className: action.className || CLASS_NAMES[action.classId] || action.classId,
+          time: action.time,
+          bookedAt: new Date()
         },
         { upsert: true, returnDocument: "after" }
       );
-      return { 
+      return {
         type: action.type,
         classId: action.classId,
         className: action.className,
         time: action.time,
-        bookingId, 
-        status: "success", 
-        statusMessage: `Reserva confirmada na aula de ${action.className} às ${action.time}!` 
+        bookingId,
+        status: "success",
+        statusMessage: `Reserva confirmada na aula de ${action.className} às ${action.time}!`
       };
     } else if (action.type === "CANCEL_CLASS" && action.classId) {
       await BookedClass.deleteOne({ userId: cleanUserId, classId: action.classId });
-      return { 
+      return {
         type: action.type,
         classId: action.classId,
         className: action.className,
-        status: "success", 
-        statusMessage: `Reserva cancelada com sucesso.` 
+        status: "success",
+        statusMessage: `Reserva cancelada com sucesso.`
       };
     }
   } catch (error) {
