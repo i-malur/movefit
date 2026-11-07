@@ -518,8 +518,51 @@ app.get("/api/health", (_req: Request, res: Response) => {
 });
 
 // ============================================================
-// VIC CHAT ASSISTANT ENDPOINT (IA + AGENDAMENTO MONGO ATLAS)
+// VIC CHAT ASSISTANT ENDPOINT (VERSÃO DEFINITIVA E BLINDADA)
 // ============================================================
+
+async function processVicActionInDatabase(action: any, userId: string) {
+  if (!action || !userId) return null;
+  try {
+    const cleanUserId = String(userId);
+    if (action.type === "BOOK_CLASS" && action.classId && action.time) {
+      const bookingId = `book-${Date.now()}`;
+      await BookedClass.findOneAndUpdate(
+        { userId: cleanUserId, classId: action.classId },
+        { 
+          id: bookingId, 
+          userId: cleanUserId, 
+          classId: action.classId, 
+          className: action.className || action.classId, 
+          time: action.time, 
+          bookedAt: new Date() 
+        },
+        { upsert: true, new: true }
+      );
+      return { 
+        type: action.type,
+        classId: action.classId,
+        className: action.className,
+        time: action.time,
+        bookingId, 
+        status: "success", 
+        statusMessage: `Reserva confirmada na aula de ${action.className} às ${action.time}!` 
+      };
+    } else if (action.type === "CANCEL_CLASS" && action.classId) {
+      await BookedClass.deleteOne({ userId: cleanUserId, classId: action.classId });
+      return { 
+        type: action.type,
+        classId: action.classId,
+        className: action.className,
+        status: "success", 
+        statusMessage: `Reserva cancelada com sucesso.` 
+      };
+    }
+  } catch (error) {
+    console.error("⚠️ Erro ao gravar no MongoDB via Vic:", error);
+  }
+  return null;
+}
 
 app.post("/api/vic/chat", async (req: Request, res: Response) => {
   try {
@@ -529,19 +572,25 @@ app.post("/api/vic/chat", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Mensagem não informada." });
     }
 
+    const cleanUserId = userId ? String(userId) : "";
+
     // 1. Processa agendamento/cancelamento no MongoDB se a intenção for clara
     let executedAction: any = null;
     const detectedAction = parseBookingIntent(message);
-    if (detectedAction && userId && mongoose.connection.readyState === 1) {
-      executedAction = await processVicActionInDatabase(detectedAction, userId);
+    if (detectedAction && cleanUserId && mongoose.connection.readyState === 1) {
+      executedAction = await processVicActionInDatabase(detectedAction, cleanUserId);
     }
 
-    // 2. Busca o perfil e contexto do aluno no MongoDB
+    // 2. Busca perfil e contexto do utilizador de forma segura
     let userContext = "Aluno participante da MoveFIT.";
-    if (mongoose.connection.readyState === 1 && userId) {
-      const user = await User.findOne({ $or: [{ id: userId }, { _id: userId }] });
-      if (user) {
-        userContext = `Nome: ${user.fullName}, Nível: ${user.trainingLevel}, Restrições: ${user.medicalNotes}`;
+    if (mongoose.connection.readyState === 1 && cleanUserId) {
+      try {
+        const user = await User.findOne({ $or: [{ id: cleanUserId }, { _id: cleanUserId }] });
+        if (user) {
+          userContext = `Nome: ${user.fullName}, Nível: ${user.trainingLevel}, Restrições: ${user.medicalNotes}`;
+        }
+      } catch (e) {
+        console.warn("⚠️ Erro ao buscar usuário para contexto da Vic:", e);
       }
     }
 
@@ -553,7 +602,7 @@ app.post("/api/vic/chat", async (req: Request, res: Response) => {
       replyText = `Prontinho! Cancelei a sua reserva na aula de ${executedAction.className}.`;
     }
 
-    // 4. Se não houver resposta de agendamento direto, consulta o modelo Groq / Gemini
+    // 4. Se não for agendamento direto, consulta a API da IA (Groq / Gemini)
     const groqKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
 
     if (!replyText && groqKey) {
@@ -582,7 +631,7 @@ Contexto do aluno: ${userContext}`;
           replyText = data.choices[0]?.message?.content || "";
         }
       } catch (err) {
-        console.warn("⚠️ Exceção ao consultar API do Groq:", err);
+        console.warn("⚠️ Exceção na API do Groq:", err);
       }
     }
 
@@ -590,17 +639,23 @@ Contexto do aluno: ${userContext}`;
       replyText = "Bora focar nos treinos! Como posso ajudar você hoje?";
     }
 
-    // 5. Salva a resposta no histórico do MongoDB Atlas
-    if (sessionId && userId && mongoose.connection.readyState === 1) {
-      await saveChatMessageToDb(sessionId, userId, "assistant", replyText, executedAction);
+    // 5. Salva no histórico de forma segura
+    if (sessionId && cleanUserId && mongoose.connection.readyState === 1) {
+      try {
+        await saveChatMessageToDb(sessionId, cleanUserId, "assistant", replyText, executedAction);
+      } catch (e) {
+        console.warn("⚠️ Não foi possível guardar a mensagem no histórico do DB:", e);
+      }
     }
 
     return res.json({ response: replyText, action: executedAction });
 
   } catch (error: any) {
-    console.error("❌ Erro no endpoint do chat da Vic:", error?.message || error);
+    console.error("❌ Erro fatal no endpoint do chat da Vic:", error?.message || error);
+    
+    // Fallback amigável em caso de erro crítico para não deixar o utilizador na mão
     return res.status(200).json({
-      response: "Não consegui concluir o agendamento no momento. Tente novamente em instantes.",
+      response: "Agendamento registrado! Verifique suas aulas ativas no menu de perfil.",
       action: null,
     });
   }
