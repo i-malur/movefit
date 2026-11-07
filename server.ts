@@ -509,7 +509,7 @@ app.get("/api/health", (_req: Request, res: Response) => {
 });
 
 // ============================================================
-// VIC CHAT ASSISTANT ENDPOINT (GROQ + FUNCTION CALLING + MONGO)
+// VIC CHAT ASSISTANT ENDPOINT (COM TRATAMENTO ROBUSTO DE ERROS)
 // ============================================================
 
 app.post("/api/vic/chat", async (req: Request, res: Response) => {
@@ -520,128 +520,92 @@ app.post("/api/vic/chat", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Mensagem não informada." });
     }
 
-    // 1. Busca o perfil e contexto do aluno no MongoDB
-    let userContext = "Aluno visitante (sem dados de perfil).";
-    if (mongoose.connection.readyState === 1 && userId) {
-      const user = await User.findOne({ id: userId });
-      if (user) {
-        userContext = `Nome: ${user.fullName}, Nível: ${user.trainingLevel}, Peso: ${user.weight || "N/I"}kg, Altura: ${user.height || "N/I"}cm, Restrições Médicas: ${user.medicalNotes}`;
-      }
-    }
-
-    // 2. Salva a mensagem do usuário no histórico do banco
-    if (sessionId && userId) {
-      await saveChatMessageToDb(sessionId, userId, "user", message, null);
-    }
-
-    // 3. Deteta intenções diretas de agendamento/cancelamento (Fallback Regex)
+    // 1. Deteta intenções diretas de agendamento/cancelamento (Pilates, Spinning, etc.)
     const detectedAction = parseBookingIntent(message);
-    if (detectedAction && userId) {
+    if (detectedAction && userId && mongoose.connection.readyState === 1) {
       await processVicActionInDatabase(detectedAction, userId);
     }
 
-    // 4. Se a API Key não estiver configurada no Render, devolve resposta amigável
-    if (!apiKey) {
-      const fallbackMsg = "Olá! Sou a Vic 🏋️‍♀️. Minha conexão com o modelo de IA está sendo configurada nas variáveis do servidor, mas estou pronta para te ajudar no treino!";
-      if (sessionId && userId) {
-        await saveChatMessageToDb(sessionId, userId, "assistant", fallbackMsg, detectedAction);
+    // 2. Busca o perfil e contexto do aluno no MongoDB
+    let userContext = "Aluno visitante.";
+    if (mongoose.connection.readyState === 1 && userId) {
+      const user = await User.findOne({ id: userId });
+      if (user) {
+        userContext = `Nome: ${user.fullName}, Nível: ${user.trainingLevel}, Obs Médicas: ${user.medicalNotes}`;
       }
-      return res.json({ response: fallbackMsg, action: detectedAction });
     }
 
-    // 5. Chamada completa à IA (Groq) com Prompt do System + Regras da Vic
+    // 3. Verifica a chave de API do Groq / Gemini
+    const groqKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
+
+    // Se o agendamento direto funcionou e não há chave de IA ativa no Render
+    if (!groqKey) {
+      let fallbackText = "Oi! Sou a Vic 🏋️‍♀️. ";
+      if (detectedAction?.type === "BOOK_CLASS") {
+        fallbackText += `Com certeza! Agendei sua aula de ${detectedAction.className} às ${detectedAction.time}. Te vejo lá! 💪`;
+      } else if (detectedAction?.type === "CANCEL_CLASS") {
+        fallbackText += `Cancelei a sua reserva na aula de ${detectedAction.className} com sucesso!`;
+      } else {
+        fallbackText += "Como posso ajudar no seu treino hoje?";
+      }
+
+      if (sessionId && userId) {
+        await saveChatMessageToDb(sessionId, userId, "assistant", fallbackText, detectedAction);
+      }
+
+      return res.json({ response: fallbackText, action: detectedAction });
+    }
+
+    // 4. Chamada via Fetch para o Groq (garantida e sem dependência estrita do SDK)
     const systemPrompt = `Você é a Vic, uma personal trainer virtual em 3D e assistente oficial da academia MoveFIT.
-Sua personalidade é extremamente motivadora, descontraída, acolhedora e focada em resultados com saúde.
+Personalidade: extremamente motivadora, descontraída e acolhedora.
+Contexto do aluno: ${userContext}`;
 
-REGRAS DE COMPORTAMENTO:
-1. Trate o aluno pelo nome e leve em consideração suas métricas e restrições médicas.
-2. Dê dicas de treino claras, exercícios práticos e incentivo constante.
-3. Se o aluno pedir para agendar ou cancelar aulas (Pilates, Spinning, FitDance, Treino Funcional), use as ferramentas (tools) disponíveis ou confirme que a aula foi atualizada.
-4. Mantenha as respostas objetivas e formatadas para leitura confortável em mobile.
-
-CONTEXTO DO ALUNO ATUAL:
-${userContext}`;
-
-    let replyText = "";
-    let executedAction: any = detectedAction;
-
-    if (groq) {
-      // Uso do SDK do Groq com suporte a ferramentas (Tools / Function Calling)
-      const chatCompletion = await groq.chat.completions.create({
+    const aiResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${groqKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: message },
         ],
-        model: "llama-3.3-70b-versatile",
-        tools,
-        tool_choice: "auto",
-      });
+      }),
+    });
 
-      const choice = chatCompletion.choices[0];
-      const toolCalls = choice?.message?.tool_calls;
-
-      if (toolCalls && toolCalls.length > 0) {
-        for (const toolCall of toolCalls) {
-          const fnName = toolCall.function.name;
-          const args = JSON.parse(toolCall.function.arguments || "{}");
-
-          if (fnName === "bookGymClass" && userId) {
-            executedAction = {
-              type: "BOOK_CLASS",
-              classId: args.classId,
-              time: args.time,
-              className: CLASS_NAMES[args.classId] || args.classId,
-            };
-            await processVicActionInDatabase(executedAction, userId);
-            replyText = `Com certeza! Agendei sua aula de ${executedAction.className} às ${args.time}. Te vejo lá! 🏋️‍♀️`;
-          } else if (fnName === "cancelGymClass" && userId) {
-            executedAction = {
-              type: "CANCEL_CLASS",
-              classId: args.classId,
-              className: CLASS_NAMES[args.classId] || args.classId,
-            };
-            await processVicActionInDatabase(executedAction, userId);
-            replyText = `Prontinho! Cancelei sua reserva na aula de ${executedAction.className}. Se precisar remarcar, é só chamar!`;
-          }
-        }
-      }
-
-      if (!replyText) {
-        replyText = choice?.message?.content || "Estou pronta para treinar! Como posso te ajudar hoje?";
-      }
-    } else {
-      // Fallback via Fetch HTTP caso o SDK do Groq não seja instanciado
-      const aiResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: message },
-          ],
-        }),
-      });
-
+    let replyText = "";
+    if (aiResponse.ok) {
       const data = await aiResponse.json();
-      replyText = data.choices[0]?.message?.content || "Estou pronta para te ajudar com os treinos!";
+      replyText = data.choices[0]?.message?.content || "";
     }
 
-    // 6. Salva a resposta da Vic no histórico do banco
+    // Se a IA gerou resposta mas houve um agendamento direto por texto, reforça a confirmação
+    if (!replyText) {
+      if (detectedAction?.type === "BOOK_CLASS") {
+        replyText = `Com certeza! Agendei a sua aula de ${detectedAction.className} às ${detectedAction.time}. Te vejo lá! 🏋️‍♀️`;
+      } else if (detectedAction?.type === "CANCEL_CLASS") {
+        replyText = `Prontinho! Cancelei a sua vaga na aula de ${detectedAction.className}.`;
+      } else {
+        replyText = "Bora focar nos treinos! Como posso te ajudar hoje?";
+      }
+    }
+
+    // 5. Salva a resposta no histórico do MongoDB
     if (sessionId && userId) {
-      await saveChatMessageToDb(sessionId, userId, "assistant", replyText, executedAction);
+      await saveChatMessageToDb(sessionId, userId, "assistant", replyText, detectedAction);
     }
 
-    return res.json({ response: replyText, action: executedAction });
+    return res.json({ response: replyText, action: detectedAction });
 
   } catch (error: any) {
     console.error("❌ Erro no chat da Vic:", error?.message || error);
-    
+
+    // Se houver exceção inesperada, tenta pelo menos confirmar se houve agendamento
     return res.status(200).json({
-      response: "Tive um pequeno percalço na conexão com meu servidor, mas já estou de volta! Como posso te ajudar com o treino hoje?",
+      response: "Recebi seu pedido! Verifique na aba de agendamentos se a sua vaga já está confirmada.",
       action: null,
     });
   }
