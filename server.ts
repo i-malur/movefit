@@ -196,7 +196,7 @@ async function seedDatabase() {
 }
 
 // ============================================================
-// FUNÇÃO AUXILIAR DE USERNAME CORPORATIVO (.fit)
+// FUNÇÕES AUXILIARES DE PROCESSAMENTO DE INTENÇÃO E BANCO
 // ============================================================
 
 function generateFitUsername(fullName: string): string {
@@ -208,10 +208,6 @@ function generateFitUsername(fullName: string): string {
 
   return `${cleanName}.fit`;
 }
-
-// ============================================================
-// PARSER E PROCESSADOR DE AÇÕES DE AGENDAMENTO
-// ============================================================
 
 const CLASS_NAMES: Record<string, string> = {
   pilates: "Pilates",
@@ -304,7 +300,7 @@ async function saveChatMessageToDb(sessionId: string | undefined, userId: string
   if (!sessionId || !userId || !content) return;
   try {
     const msgId = "msg-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
-    await ChatMessage.create({ id: msgId, sessionId, userId: String(userId), role, content, action, timestamp: new Date() });
+    await ChatMessage.create({ id: msgId, sessionId, userId, role, content, action, timestamp: new Date() });
 
     if (role === "user") {
       const titleSnippet = content.length > 25 ? content.substring(0, 25) + "..." : content;
@@ -495,12 +491,7 @@ app.post("/api/classes/cancel", async (req: Request, res: Response) => {
       return res.status(503).json({ error: "Banco de dados inicializando." });
     }
 
-    const cleanUserId = String(userId);
-    const result = await BookedClass.deleteOne({
-      $or: [{ userId: cleanUserId }, { userId: userId }],
-      classId,
-    });
-    
+    const result = await BookedClass.deleteOne({ userId, classId });
     if (result.deletedCount === 0) {
       return res.status(400).json({ error: "Nenhum agendamento encontrado para cancelar." });
     }
@@ -511,26 +502,18 @@ app.post("/api/classes/cancel", async (req: Request, res: Response) => {
   }
 });
 
-// Busca robusta de agendamentos persistidos no MongoDB Atlas (Suporta F5 / Refresh)
-app.get(["/api/users/:userId/bookings", "/api/classes/booked/:userId"], async (req: Request, res: Response) => {
+// Suporte para ambas as estruturas de rotas de agendamento (evita o problema no F5)
+app.get(["/api/users/:userId/bookings", "/api/classes/booked/:userId", "/api/classes/user/:userId"], async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
     if (mongoose.connection.readyState === 1 && userId) {
-      const cleanUserId = String(userId);
-      
-      // Procura por ID direto ou por ObjectId correspondente
       const bookings = await BookedClass.find({
-        $or: [
-          { userId: cleanUserId },
-          { userId: userId }
-        ]
-      }).sort({ bookedAt: -1 });
-
+        $or: [{ userId }, { userId: String(userId) }]
+      });
       return res.json(bookings);
     }
     return res.json([]);
   } catch (error) {
-    console.error("⚠️ Erro ao carregar agendamentos do usuário:", error);
     return res.status(200).json([]);
   }
 });
@@ -544,7 +527,7 @@ app.get("/api/health", (_req: Request, res: Response) => {
 });
 
 // ============================================================
-// VIC CHAT ASSISTANT ENDPOINT (VERSÃO DEFINITIVA & BLINDADA)
+// VIC CHAT ASSISTANT ENDPOINT (COM INSTRUTIVO DE EXERCÍCIOS)
 // ============================================================
 
 app.post("/api/vic/chat", async (req: Request, res: Response) => {
@@ -564,17 +547,14 @@ app.post("/api/vic/chat", async (req: Request, res: Response) => {
       executedAction = await processVicActionInDatabase(detectedAction, cleanUserId);
     }
 
-    // 2. Busca perfil e contexto do utilizador de forma segura (sem forçar cast de _id)
+    // 2. Busca perfil e contexto do aluno de forma segura (evita falha de ObjectId)
     let userContext = "Aluno participante da MoveFIT.";
     if (mongoose.connection.readyState === 1 && cleanUserId) {
       try {
         let user = await User.findOne({ id: cleanUserId });
-
-        // Se não achou pelo campo id e cleanUserId tem exatamente 24 hex chars, tenta por _id
         if (!user && mongoose.Types.ObjectId.isValid(cleanUserId)) {
           user = await User.findById(cleanUserId);
         }
-
         if (user) {
           userContext = `Nome: ${user.fullName}, Nível: ${user.trainingLevel}, Restrições: ${user.medicalNotes}`;
         }
@@ -583,7 +563,7 @@ app.post("/api/vic/chat", async (req: Request, res: Response) => {
       }
     }
 
-    // 3. Monta a resposta de confirmação se um agendamento direto ocorreu
+    // 3. Resposta direta caso seja uma ação de agendamento explícita
     let replyText = "";
     if (executedAction && executedAction.type === "BOOK_CLASS") {
       replyText = `Com certeza! Agendei a sua aula de ${executedAction.className} às ${executedAction.time} com sucesso! 🏋️‍♀️`;
@@ -591,14 +571,31 @@ app.post("/api/vic/chat", async (req: Request, res: Response) => {
       replyText = `Prontinho! Cancelei a sua reserva na aula de ${executedAction.className}.`;
     }
 
-    // 4. Se não for agendamento direto, consulta a API da IA (Groq / Gemini)
+    // 4. Consulta a IA com o System Prompt completo para demonstrativos e salvamento
     const groqKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
 
     if (!replyText && groqKey) {
       try {
-        const systemPrompt = `Você é a Vic, personal trainer virtual em 3D da academia MoveFIT.
-Personalidade: motivadora, descontraída e acolhedora.
-Contexto do aluno: ${userContext}`;
+        const systemPrompt = `Você é a Vic, personal trainer virtual em 3D e assistente oficial da academia MoveFIT.
+Personalidade: extremamente motivadora, profissional, acolhedora e descontraída.
+Contexto do aluno: ${userContext}
+
+REGRAS OBRIGATÓRIAS DE EXERCÍCIOS E VÍDEOS DEMONSTRATIVOS:
+1. Sempre que o aluno pedir treinos, séries, orientações de execução ou exercícios específicos, forneça uma explicação clara sobre postura/execução e INCLUA OBRIGATORIAMENTE no final da resposta a tag [EXERCISES: nome_do_exercicio1, nome_do_exercicio2].
+2. Use nomes em inglês com underline para os exercícios na tag, ex:
+   - [EXERCISES: jumping_jacks, bodyweight_squat]
+   - [EXERCISES: push_up, plank]
+   - [EXERCISES: dumbbell_shoulder_raise, lunges]
+3. Estruture as respostas de treino com títulos claros (ex: "🏋️‍♂️ Treino de Mobilidade e Core") para que a função de salvar recomendação no perfil consiga extrair o título e a categoria corretamente.
+
+REGRAS DE CONVERSAÇÃO
+1. Não use formato markdown;
+2. Traga respostas diretas e o mais resumida possivel. Para exercícios e treinos, faça de forma mais explicativa e extensa;
+3. Tom calmo e sereno;
+4. Se o usuário for agressivo, pare o atendimento e peça para ele ser educado;
+5. Seu nome é Vic. Se o usuário te chamar por outro nome, seja educada e o corrija.
+
+`;
 
         const aiResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
@@ -620,7 +617,7 @@ Contexto do aluno: ${userContext}`;
           replyText = data.choices[0]?.message?.content || "";
         }
       } catch (err) {
-        console.warn("⚠️ Exceção na API do Groq:", err);
+        console.warn("⚠️ Exceção ao consultar API do Groq:", err);
       }
     }
 
@@ -628,12 +625,12 @@ Contexto do aluno: ${userContext}`;
       replyText = "Bora focar nos treinos! Como posso ajudar você hoje?";
     }
 
-    // 5. Salva no histórico de forma segura
+    // 5. Salva no histórico de chat do MongoDB de forma segura
     if (sessionId && cleanUserId && mongoose.connection.readyState === 1) {
       try {
         await saveChatMessageToDb(sessionId, cleanUserId, "assistant", replyText, executedAction);
       } catch (e) {
-        console.warn("⚠️ Não foi possível guardar a mensagem no histórico do DB:", e);
+        console.warn("⚠️ Erro ao salvar mensagem no MongoDB:", e);
       }
     }
 
@@ -641,9 +638,8 @@ Contexto do aluno: ${userContext}`;
 
   } catch (error: any) {
     console.error("❌ Erro no endpoint do chat da Vic:", error?.message || error);
-    
     return res.status(200).json({
-      response: "Recebi seu pedido! Verifique se a sua vaga já está ativa na aba de agendamentos.",
+      response: "Não consegui processar a resposta agora, mas podemos tentar de novo!",
       action: null,
     });
   }
@@ -690,7 +686,7 @@ app.post("/api/vic/speech", async (req: Request, res: Response) => {
 app.get("/api/vic/sessions/:userId", async (req: Request, res: Response) => {
   try {
     if (mongoose.connection.readyState !== 1) return res.json([]);
-    const sessions = await ChatSession.find({ userId: String(req.params.userId) }).sort({ createdAt: -1 });
+    const sessions = await ChatSession.find({ userId: req.params.userId }).sort({ createdAt: -1 });
     return res.json(sessions);
   } catch (error) {
     return res.status(200).json([]);
@@ -704,7 +700,7 @@ app.post("/api/vic/sessions", async (req: Request, res: Response) => {
     if (mongoose.connection.readyState !== 1) {
       return res.status(503).json({ error: "Banco de dados inicializando." });
     }
-    const session = await ChatSession.create({ id: sessionId, userId: String(userId), title: title || "Nova conversa com a Vic" });
+    const session = await ChatSession.create({ id: sessionId, userId, title: title || "Nova conversa com a Vic" });
     return res.status(201).json(session);
   } catch (error) {
     return res.status(500).json({ error: "Erro ao criar conversa." });
