@@ -146,6 +146,29 @@ const ChatMessageSchema = new Schema<IChatMessage>({
 
 const ChatMessage = mongoose.model<IChatMessage>("ChatMessage", ChatMessageSchema);
 
+// 6. Recomendações Salvas no Perfil
+interface ISavedRecommendation extends Document {
+  id: string;
+  userId: string;
+  title: string;
+  category: string;
+  content: string;
+  sourceMessageId?: string;
+  savedAt: string;
+}
+
+const SavedRecommendationSchema = new Schema<ISavedRecommendation>({
+  id: { type: String, required: true, unique: true },
+  userId: { type: String, required: true },
+  title: { type: String, required: true },
+  category: { type: String, required: true },
+  content: { type: String, required: true },
+  sourceMessageId: { type: String, default: "" },
+  savedAt: { type: String, default: () => new Date().toLocaleString("pt-BR") },
+});
+
+const SavedRecommendation = mongoose.model<ISavedRecommendation>("SavedRecommendation", SavedRecommendationSchema);
+
 // ============================================================
 // SEED AUTOMÁTICO
 // ============================================================
@@ -491,6 +514,65 @@ app.get(["/api/users/:userId/bookings", "/api/classes/booked/:userId", "/api/cla
   }
 });
 
+// ============================================================
+// ENDPOINTS DE RECOMENDAÇÕES SALVAS (PERFIL)
+// ============================================================
+
+app.get("/api/recommendations/:userId", async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    if (mongoose.connection.readyState === 1 && userId) {
+      const recs = await SavedRecommendation.find({
+        $or: [{ userId }, { userId: String(userId) }]
+      }).sort({ _id: -1 });
+      return res.json(recs);
+    }
+    return res.json([]);
+  } catch (error) {
+    return res.status(200).json([]);
+  }
+});
+
+app.post("/api/recommendations", async (req: Request, res: Response) => {
+  try {
+    const { userId, title, category, content, sourceMessageId } = req.body;
+    if (!userId || !title || !content) {
+      return res.status(400).json({ error: "Campos obrigatórios ausentes." });
+    }
+
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ error: "Banco de dados inicializando." });
+    }
+
+    const recId = `rec-${Date.now()}`;
+    const newRec = await SavedRecommendation.create({
+      id: recId,
+      userId: String(userId),
+      title,
+      category: category || "geral",
+      content,
+      sourceMessageId: sourceMessageId || "",
+      savedAt: new Date().toLocaleString("pt-BR"),
+    });
+
+    return res.status(201).json(newRec);
+  } catch (error: any) {
+    return res.status(500).json({ error: "Erro ao salvar recomendação." });
+  }
+});
+
+app.delete("/api/recommendations/:recId", async (req: Request, res: Response) => {
+  try {
+    const { recId } = req.params;
+    if (mongoose.connection.readyState !== 1) return res.status(503).json({ error: "Banco de dados inicializando." });
+
+    await SavedRecommendation.deleteOne({ $or: [{ id: recId }, { _id: recId }] });
+    return res.json({ success: true, message: "Recomendação removida." });
+  } catch (error) {
+    return res.status(500).json({ error: "Erro ao remover recomendação." });
+  }
+});
+
 app.get("/api/health", (_req: Request, res: Response) => {
   res.json({ status: "ok", service: "MoveFIT Server" });
 });
@@ -597,7 +679,7 @@ REGRAS DE CONVERSAÇÃO:
       }
     }
 
-    // 6. FALLBACK DINÂMICO SE A API FALHAR (Evita frases repetidas e traz os vídeos)
+    // 6. FALLBACK DINÂMICO SE A API FALHAR
     if (!replyText) {
       const lower = message.toLowerCase();
       if (lower.includes("treino") || lower.includes("exercicio") || lower.includes("rotina") || lower.includes("facil") || lower.includes("fáceis") || lower.includes("casa")) {

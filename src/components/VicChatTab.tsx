@@ -24,7 +24,6 @@ import {
   VolumeX,
   Square,
   Loader2,
-  Settings2,
   Bookmark,
   BookmarkCheck,
   Plus,
@@ -37,13 +36,7 @@ interface VicChatTabProps {
   user: User;
   bookedClasses: BookedClass[];
   classes: GymClass[];
-  onBookClass: (
-    classId: string,
-    time: string
-  ) => {
-    success: boolean;
-    message: string;
-  };
+  onBookClass: (classId: string, time: string) => { success: boolean; message: string };
   onCancelBooking: (bookingId: string) => void;
   onNavigateToClasses?: () => void;
   savedRecommendations?: SavedRecommendation[];
@@ -121,13 +114,6 @@ const ExerciseCard: React.FC<{ exerciseName: string }> = ({ exerciseName }) => {
   );
 };
 
-const VIC_VOICES = [
-  { id: "bella", name: "Bella", label: "Vic Energética (Bella)", description: "Jovem e dinâmica", emoji: "🩷" },
-  { id: "rachel", name: "Rachel", label: "Vic Natural (Rachel)", description: "Calma e amigável", emoji: "✨" },
-  { id: "domi", name: "Domi", label: "Vic Forte (Domi)", description: "Enérgica e motivadora", emoji: "🔥" },
-  { id: "elli", name: "Elli", label: "Vic Suave (Elli)", description: "Jovem e espontânea", emoji: "🌸" },
-];
-
 export const VicChatTab: React.FC<VicChatTabProps> = ({
   user,
   bookedClasses,
@@ -139,7 +125,6 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
   onRemoveRecommendation,
   onNavigateToProfile,
 }) => {
-  // Garantir a obtenção do ID do utilizador (suporta id e _id do MongoDB)
   const currentUserId = user?.id || (user as any)?._id || "";
 
   const [toastNotification, setToastNotification] = useState<string | null>(null);
@@ -211,22 +196,19 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
 
   const [inputPrompt, setInputPrompt] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedVoiceKey, setSelectedVoiceKey] = useState<string>(() => localStorage.getItem("vicVoiceKey") || "bella");
-  const [autoSpeak, setAutoSpeak] = useState<boolean>(() => localStorage.getItem("vicAutoSpeak") !== "false");
+  const [selectedVoiceKey] = useState<string>(() => localStorage.getItem("vicVoiceKey") || "bella");
+  const [autoSpeak] = useState<boolean>(() => localStorage.getItem("vicAutoSpeak") !== "false");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [audioLoadingMessageId, setAudioLoadingMessageId] = useState<string | null>(null);
-  const [showVoiceSettings, setShowVoiceSettings] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
   const [isListening, setIsListening] = useState(false);
-  const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Carregar histórico de sessões do MongoDB Atlas
   useEffect(() => {
     if (currentUserId) {
       fetch(`/api/vic/sessions/${currentUserId}`)
@@ -244,10 +226,6 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
         .catch((err) => console.error("Erro ao carregar sessões de chat:", err));
     }
   }, [currentUserId]);
-
-  useEffect(() => {
-    localStorage.setItem("vicVoiceKey", selectedVoiceKey);
-  }, [selectedVoiceKey]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -317,17 +295,16 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
     setSpeakingMessageId(null);
   };
 
-  const speakText = async (text: string, messageId: string, voiceKeyToUse?: string) => {
+  const speakText = async (text: string, messageId: string) => {
     stopSpeaking();
     setIsAudioLoading(true);
     setAudioLoadingMessageId(messageId);
-    const voiceKey = voiceKeyToUse || selectedVoiceKey;
 
     try {
       const response = await fetch("/api/vic/speech", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voice: voiceKey }),
+        body: JSON.stringify({ text, voice: selectedVoiceKey }),
       });
 
       if (!response.ok) throw new Error("Erro na API de voz");
@@ -370,13 +347,8 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
   };
 
   const toggleMicrophone = async () => {
-    setMicPermissionError(null);
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      setMicPermissionError("Reconhecimento de voz não suportado neste navegador.");
-      return;
-    }
+    if (!SpeechRecognition) return;
 
     if (isListening) {
       setIsListening(false);
@@ -406,15 +378,6 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
     { classId: "funcional", name: "Funcional", time: "18:30", days: "Ter/Qui" },
   ];
 
-  const quickPrompts = [
-    "Vic, agenda Pilates às 10:00 para mim",
-    "Vic, agenda Spinning às 12:00",
-    "Vic, marca FitDance às 19:00",
-    "Vic, agenda Treino Funcional às 18:30",
-    `Dicas de treino para nível ${user.trainingLevel}`,
-  ];
-
-  // Enviar Mensagem para o Backend e Sincronizar Estado Local
   const handleSendMessage = async (textToSend?: string) => {
     const messageContent = (textToSend || inputPrompt).trim();
     if (!messageContent || isLoading) return;
@@ -446,7 +409,6 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
       const data = await response.json();
       let executedAction: ChatAction | undefined = undefined;
 
-      // Executa a sincronização do agendamento com o React se a ação do MongoDB ocorreu com sucesso
       if (data.action?.type === "BOOK_CLASS" && data.action?.status === "success") {
         onBookClass(data.action.classId, data.action.time);
         executedAction = data.action;
@@ -471,7 +433,7 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
       setMessages((prev) => [...prev, vicReply]);
 
       if (autoSpeak) {
-        setTimeout(() => speakText(vicReply.content, vicReply.id, selectedVoiceKey), 100);
+        setTimeout(() => speakText(vicReply.content, vicReply.id), 100);
       }
     } catch {
       setMessages((prev) => [
@@ -479,7 +441,7 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
         {
           id: "msg-" + Date.now(),
           role: "assistant",
-          content: "Tive uma oscilação na conexão, mas a sua vaga pode ter sido agendada. Verifique no seu perfil!",
+          content: "Tive uma oscilação na conexão. Tente de novo em instantes!",
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },
       ]);
@@ -558,7 +520,7 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
         </div>
       </div>
 
-      {/* CONTAINER DO CHAT */}
+      {/* CHAT CONTAINER */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {showHistorySidebar && (
           <div className="md:col-span-1 bg-[#292433] border border-[#3E374C] rounded-2xl p-4 shadow-xl flex flex-col h-[520px] overflow-hidden">
@@ -604,7 +566,72 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
                       <span className="text-[10px] opacity-60">{msg.timestamp}</span>
                     </div>
 
-                    <div className="whitespace-pre-wrap text-[13.5px]">{msg.content}</div>
+                    {isVic ? (
+                      (() => {
+                        const { textContent, exercisesList } = parseVicMessageContent(msg.content);
+
+                        return (
+                          <div className="space-y-3">
+                            <div className="whitespace-pre-wrap text-[13.5px]">{textContent}</div>
+
+                            {exercisesList.length > 0 && (
+                              <div className="mt-3 pt-3 border-t border-[#3E374C]">
+                                <p className="text-[11px] font-bold text-[#00C0A3] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                  <Sparkles className="w-3.5 h-3.5" /> Demonstrativos dos Movimentos:
+                                </p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {exercisesList.map((exName, idx) => (
+                                    <ExerciseCard key={idx} exerciseName={exName} />
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <div className="whitespace-pre-wrap text-[13.5px]">{msg.content}</div>
+                    )}
+
+                    {isVic && (
+                      <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                        {isAudioLoading && audioLoadingMessageId === msg.id ? (
+                          <button disabled className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#845EC2]/20 text-[#cdb9ee] border border-[#845EC2]/30 text-[10px] font-semibold cursor-wait">
+                            <Loader2 className="w-3 h-3 animate-spin text-[#cdb9ee]" /> Carregando áudio...
+                          </button>
+                        ) : speakingMessageId === msg.id ? (
+                          <button onClick={stopSpeaking} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-[10px] font-semibold cursor-pointer">
+                            <Square className="w-3 h-3 fill-current" /> Parar
+                          </button>
+                        ) : (
+                          <button onClick={() => speakText(msg.content, msg.id)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#00C0A3]/10 hover:bg-[#00C0A3]/20 text-[#00C0A3] border border-[#00C0A3]/30 text-[10px] font-semibold cursor-pointer">
+                            <Volume2 className="w-3 h-3" /> Ouvir
+                          </button>
+                        )}
+
+                        {onSaveRecommendation && msg.id !== "msg-welcome" && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSaveRecommendation(msg)}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
+                              isMessageSaved(msg) ? "bg-[#845EC2]/30 text-[#d6c7f7] border border-[#845EC2]/60" : "bg-[#292433] hover:bg-[#342f40] text-zinc-300 border border-[#3E374C]"
+                            }`}
+                          >
+                            {isMessageSaved(msg) ? (
+                              <>
+                                <BookmarkCheck className="w-3 h-3 text-[#00C0A3]" />
+                                <span>Salva no Perfil</span>
+                              </>
+                            ) : (
+                              <>
+                                <Bookmark className="w-3 h-3 text-zinc-400" />
+                                <span>Salvar Recomendação</span>
+                              </>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    )}
 
                     {msg.action && (
                       <div className={`mt-3 p-3 rounded-xl border text-xs transition-all ${msg.action.status === "success" ? "bg-[#00C0A3]/10 border-[#00C0A3]/40 text-[#00C0A3]" : "bg-amber-500/10 border-amber-500/40 text-amber-300"}`}>
@@ -612,7 +639,7 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
                           <div className="flex items-start gap-2.5">
                             <CheckCircle2 className="w-4 h-4 text-[#00C0A3] shrink-0 mt-0.5" />
                             <div>
-                              <p className="font-bold">✓ Aula Agendada no seu Perfil!</p>
+                              <p className="font-bold">✓ Aula Salva com Sucesso no Seu Cronograma!</p>
                               <p className="text-[11px] mt-0.5 text-zinc-200">{msg.action.statusMessage || `${msg.action.className} às ${msg.action.time}`}</p>
                             </div>
                           </div>
@@ -631,7 +658,7 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
                 </div>
                 <div className="bg-[#1E1B24] border border-[#3E374C] rounded-2xl px-4 py-3 text-xs text-[#B0A8B9] flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin text-[#00C0A3]" />
-                  <span>Vic está processando o seu pedido...</span>
+                  <span>Vic está pensando...</span>
                 </div>
               </div>
             )}
@@ -640,6 +667,16 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
 
           <div className="p-4 bg-[#1E1B24] border-t border-[#3E374C]">
             <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleMicrophone}
+                className={`shrink-0 w-12 h-12 rounded-xl flex items-center justify-center border transition-all cursor-pointer ${
+                  isListening ? "bg-red-500/20 border-red-500/50 text-red-400 animate-pulse" : "bg-[#292433] border-[#3E374C] text-[#B0A8B9] hover:text-white"
+                }`}
+              >
+                {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              </button>
+
               <input
                 ref={inputRef}
                 type="text"
@@ -660,6 +697,13 @@ export const VicChatTab: React.FC<VicChatTabProps> = ({
           </div>
         </div>
       </div>
+
+      {toastNotification && (
+        <div className="fixed bottom-6 right-6 z-50 bg-[#292433] border border-[#00C0A3]/50 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
+          <CheckCircle2 className="w-5 h-5 text-[#00C0A3] shrink-0" />
+          <span className="text-xs font-semibold">{toastNotification}</span>
+        </div>
+      )}
     </div>
   );
 };

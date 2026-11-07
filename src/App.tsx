@@ -48,10 +48,8 @@ export default function App() {
   const [bookedClasses, setBookedClasses] = useState<BookedClass[]>([]);
   const [activeTab, setActiveTab] = useState<"classes" | "vic" | "profile">("classes");
 
-  // ID limpo do utilizador atual (suporta id e _id do MongoDB Mongoose)
   const activeUserId = currentUser?.id || (currentUser as any)?._id || "";
 
-  // Sincroniza o utilizador ativo no localStorage para não perder sessão no F5
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem("movefit_active_user", JSON.stringify(currentUser));
@@ -60,7 +58,6 @@ export default function App() {
     }
   }, [currentUser]);
 
-  // Fetch das aulas coletivas sincronizadas com o backend
   const fetchClassesFromBackend = useCallback(async () => {
     try {
       const res = await fetch("/api/classes");
@@ -71,11 +68,10 @@ export default function App() {
         }
       }
     } catch (error) {
-      // Mantém fallback local em caso de oscilação
+      // Fallback local
     }
   }, []);
 
-  // Fetch dos agendamentos do utilizador ativo diretamente do MongoDB Atlas
   const fetchBookedClassesFromBackend = useCallback(async () => {
     if (!activeUserId) {
       setBookedClasses([]);
@@ -87,7 +83,6 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
-          // Normaliza os objetos recebidos da base de dados
           const formattedBookings: BookedClass[] = data.map((b: any) => ({
             bookingId: b.id || b.bookingId || `book-${Date.now()}`,
             classId: b.classId,
@@ -101,24 +96,43 @@ export default function App() {
         }
       }
     } catch (err) {
-      console.error("Erro ao carregar agendamentos do MongoDB:", err);
+      console.error("Erro ao carregar agendamentos:", err);
     }
   }, [activeUserId]);
 
-  // Polling contínuo das vagas e agendamentos ao carregar a aplicação
+  const fetchRecommendationsFromBackend = useCallback(async () => {
+    if (!activeUserId) {
+      setSavedRecommendations([]);
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/recommendations/${activeUserId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setSavedRecommendations(data);
+        }
+      }
+    } catch (err) {
+      console.error("Erro ao carregar recomendações:", err);
+    }
+  }, [activeUserId]);
+
   useEffect(() => {
     fetchClassesFromBackend();
     fetchBookedClassesFromBackend();
+    fetchRecommendationsFromBackend();
 
     const interval = setInterval(() => {
       fetchClassesFromBackend();
       fetchBookedClassesFromBackend();
+      fetchRecommendationsFromBackend();
     }, 4000);
 
     return () => clearInterval(interval);
-  }, [fetchClassesFromBackend, fetchBookedClassesFromBackend]);
+  }, [fetchClassesFromBackend, fetchBookedClassesFromBackend, fetchRecommendationsFromBackend]);
 
-  // Buscar utilizadores registados do banco ao iniciar
   useEffect(() => {
     fetch("/api/users")
       .then((res) => (res.ok ? res.json() : []))
@@ -166,12 +180,10 @@ export default function App() {
         alert(data.error || "Erro ao realizar cadastro.");
       }
     } catch (error) {
-      console.error("Erro ao cadastrar:", error);
       alert("Não foi possível conectar ao servidor.");
     }
   };
 
-  // Agendamento de aula sincronizado com o MongoDB Atlas
   const handleBookClass = (classId: string, time: string): { success: boolean; message: string } => {
     if (!currentUser) return { success: false, message: "É necessário estar autenticado." };
 
@@ -184,7 +196,6 @@ export default function App() {
 
     const className = targetClass ? targetClass.name : classId;
 
-    // Regista no backend MongoDB
     fetch("/api/classes/book", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -207,7 +218,6 @@ export default function App() {
     };
   };
 
-  // Cancelamento de aula sincronizado com o MongoDB Atlas
   const handleCancelBooking = (bookingId: string) => {
     const booking = bookedClasses.find((b) => b.bookingId === bookingId);
     if (!booking || !activeUserId) return;
@@ -227,21 +237,39 @@ export default function App() {
       .catch((err) => console.error("Erro ao cancelar agendamento:", err));
   };
 
-  const userSavedRecommendations = savedRecommendations.filter((r) => r.userId === activeUserId);
-
   const handleSaveRecommendation = (recData: Omit<SavedRecommendation, "id" | "savedAt" | "userId">) => {
-    if (!currentUser) return;
-    const newRec: SavedRecommendation = {
-      ...recData,
-      id: `rec-${Date.now()}`,
-      userId: activeUserId,
-      savedAt: new Date().toLocaleString("pt-BR"),
-    };
-    setSavedRecommendations((prev) => [newRec, ...prev]);
+    if (!activeUserId) return;
+
+    fetch("/api/recommendations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: activeUserId,
+        title: recData.title,
+        category: recData.category,
+        content: recData.content,
+        sourceMessageId: recData.sourceMessageId,
+      }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((newRec) => {
+        if (newRec) {
+          setSavedRecommendations((prev) => [newRec, ...prev]);
+        }
+      })
+      .catch((err) => console.error("Erro ao salvar recomendação:", err));
   };
 
   const handleRemoveRecommendation = (recId: string) => {
-    setSavedRecommendations((prev) => prev.filter((r) => r.id !== recId));
+    if (!activeUserId) return;
+
+    fetch(`/api/recommendations/${recId}`, {
+      method: "DELETE",
+    })
+      .then(() => {
+        setSavedRecommendations((prev) => prev.filter((r) => r.id !== recId && (r as any)._id !== recId));
+      })
+      .catch((err) => console.error("Erro ao remover recomendação:", err));
   };
 
   const handleUpdateUser = (updatedData: Partial<User>): { success: boolean; message: string } => {
@@ -271,7 +299,7 @@ export default function App() {
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         bookedCount={bookedClasses.length}
-        savedCount={userSavedRecommendations.length}
+        savedCount={savedRecommendations.length}
       />
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-6">
@@ -292,7 +320,7 @@ export default function App() {
             onBookClass={handleBookClass}
             onCancelBooking={handleCancelBooking}
             onNavigateToClasses={() => setActiveTab("classes")}
-            savedRecommendations={userSavedRecommendations}
+            savedRecommendations={savedRecommendations}
             onSaveRecommendation={handleSaveRecommendation}
             onRemoveRecommendation={handleRemoveRecommendation}
             onNavigateToProfile={() => setActiveTab("profile")}
@@ -301,7 +329,7 @@ export default function App() {
           <ProfileTab
             user={currentUser}
             bookedClasses={bookedClasses}
-            savedRecommendations={userSavedRecommendations}
+            savedRecommendations={savedRecommendations}
             onUpdateUser={handleUpdateUser}
             onCancelBooking={handleCancelBooking}
             onRemoveRecommendation={handleRemoveRecommendation}
