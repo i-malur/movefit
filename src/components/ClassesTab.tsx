@@ -18,8 +18,8 @@ import {
 } from "lucide-react";
 
 interface ClassesTabProps {
-  classesList: GymClass[];
-  bookedClasses: BookedClass[];
+  classesList?: GymClass[];
+  bookedClasses?: BookedClass[];
   onBookClass: (classId: string, time: string, className: string) => Promise<{ success: boolean; message: string }>;
   onCancelBooking: (bookingId: string) => void;
   onNavigateToVic: () => void;
@@ -27,19 +27,23 @@ interface ClassesTabProps {
 }
 
 export const ClassesTab: React.FC<ClassesTabProps> = ({
-  classesList,
-  bookedClasses,
+  classesList = [],
+  bookedClasses = [],
   onBookClass,
   onCancelBooking,
   onNavigateToVic,
   userMatricula,
 }) => {
+  // Garantia absoluta de array para evitar o erro Cannot read properties of undefined (reading 'find')
+  const safeClassesList = Array.isArray(classesList) ? classesList : [];
+  const safeBookedClasses = Array.isArray(bookedClasses) ? bookedClasses : [];
+
   const [selectedClassId, setSelectedClassId] = useState<string>("pilates");
   const [selectedTime, setSelectedTime] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bookingMessage, setBookingMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const currentClass = classesList.find((c) => c.id === selectedClassId) || classesList[0];
+  const currentClass = safeClassesList.find((c) => c.id === selectedClassId) || safeClassesList[0];
 
   const handleClassChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setSelectedClassId(e.target.value);
@@ -49,6 +53,8 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
 
   const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentClass) return;
+
     if (!selectedTime) {
       setBookingMessage({ type: "error", text: "Por favor, selecione um horário disponível." });
       return;
@@ -72,7 +78,7 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
     }
   };
 
-  const getIcon = (iconName: string) => {
+  const getIcon = (iconName?: string) => {
     switch (iconName) {
       case "Bike":
         return <Bike className="w-5 h-5 text-[#00C0A3]" />;
@@ -180,11 +186,15 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
               onChange={handleClassChange}
               className="w-full h-11 px-3.5 bg-[#1E1B24] border border-[#3E374C] rounded-xl text-white text-sm focus:outline-none focus:border-[#00C0A3] cursor-pointer"
             >
-              {classesList.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} ({c.days}) • 50 min
-                </option>
-              ))}
+              {safeClassesList.length === 0 ? (
+                <option value="">A carregar modalidades...</option>
+              ) : (
+                safeClassesList.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.days}) • 50 min
+                  </option>
+                ))
+              )}
             </select>
           </div>
 
@@ -209,7 +219,7 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
           <div className="md:col-span-3">
             <button
               type="submit"
-              disabled={isSubmitting || !selectedTime}
+              disabled={isSubmitting || !selectedTime || !currentClass}
               className="w-full h-11 bg-[#845EC2] hover:bg-[#734db1] disabled:bg-zinc-700 disabled:opacity-50 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
             >
               <CalendarCheck2 className="w-4 h-4" />
@@ -240,17 +250,17 @@ export const ClassesTab: React.FC<ClassesTabProps> = ({
         <div className="flex items-center justify-between">
           <h3 className="text-base font-bold text-white">Suas Aulas Coletivas Agendadas</h3>
           <span className="text-xs text-[#00C0A3] font-semibold bg-[#00C0A3]/10 px-2.5 py-0.5 rounded-full border border-[#00C0A3]/30">
-            {bookedClasses.length} reserva(s) ativa(s)
+            {safeBookedClasses.length} reserva(s) ativa(s)
           </span>
         </div>
 
-        {bookedClasses.length === 0 ? (
+        {safeBookedClasses.length === 0 ? (
           <div className="bg-[#292433] border border-[#3E374C] rounded-2xl p-6 text-center text-xs text-[#B0A8B9]">
             Você ainda não possui vagas reservadas em nenhuma aula. Selecione uma modalidade acima!
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-            {bookedClasses.map((booking: any) => {
+            {safeBookedClasses.map((booking: any) => {
               const bId = booking.id || booking.bookingId;
               const bName = booking.className || "Aula Coletiva";
 
