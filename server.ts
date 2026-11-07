@@ -13,14 +13,15 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json({ limit: "2mb" }));
 
 // ============================================================
-// CONEXÃO SEGUIRA AO MONGODB ATLAS & INICIALIZAÇÃO
+// CONEXÃO SEGURA AO MONGODB ATLAS & INICIALIZAÇÃO
 // ============================================================
 
-const mongoURI = process.env.MONGODB_URI;
+// Aceita MONGODB_URI ou DATABASE_URL configurados no Render
+const mongoURI = process.env.MONGODB_URI || process.env.DATABASE_URL;
 
 async function connectDB() {
   if (!mongoURI) {
-    console.warn("⚠️ MONGODB_URI não configurada nas variáveis de ambiente do Render!");
+    console.warn("⚠️ MONGODB_URI / DATABASE_URL não configurada nas variáveis de ambiente!");
     return;
   }
 
@@ -37,7 +38,6 @@ async function connectDB() {
     console.error("❌ Erro ao conectar ao MongoDB Atlas:", err?.message || err);
   }
 }
-
 
 // ============================================================
 // MONGOOSE SCHEMAS & MODELS
@@ -100,6 +100,7 @@ interface IBookedClass extends Document {
   id: string;
   userId: string;
   classId: string;
+  className?: string;
   time: string;
   bookedAt: Date;
 }
@@ -108,6 +109,7 @@ const BookedClassSchema = new Schema<IBookedClass>({
   id: { type: String, required: true, unique: true },
   userId: { type: String, required: true },
   classId: { type: String, required: true },
+  className: { type: String, default: "" },
   time: { type: String, required: true },
   bookedAt: { type: Date, default: Date.now },
 });
@@ -198,8 +200,6 @@ async function seedDatabase() {
   }
 }
 
-seedDatabase();
-
 // ============================================================
 // FUNÇÃO AUXILIAR DE USERNAME CORPORATIVO (.fit)
 // ============================================================
@@ -220,6 +220,9 @@ function generateFitUsername(fullName: string): string {
 
 app.get("/api/users", async (_req: Request, res: Response) => {
   try {
+    if (mongoose.connection.readyState !== 1) {
+      return res.json([]);
+    }
     const users = await User.find().sort({ createdAt: -1 });
     return res.json(users);
   } catch (error) {
@@ -304,6 +307,10 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
     const { usernameOrMatricula, password, identifier } = req.body;
     const loginKey = usernameOrMatricula || identifier;
 
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ error: "Banco de dados inicializando. Tente novamente." });
+    }
+
     const user = await User.findOne({
       $or: [{ username: loginKey }, { matricula: loginKey }, { email: loginKey }],
       password,
@@ -364,7 +371,6 @@ app.get("/api/classes", async (_req: Request, res: Response) => {
   ];
 
   try {
-    // Se o MongoDB estiver conectado (readyState === 1), consulta as vagas reservadas no banco
     if (mongoose.connection.readyState === 1) {
       const updatedClasses = await Promise.all(
         classesList.map(async (cls) => {
@@ -390,7 +396,6 @@ app.get("/api/classes", async (_req: Request, res: Response) => {
       return res.json(updatedClasses);
     }
 
-    // Se o MongoDB estiver ainda conectando ou offline, retorna a grade padrão com vagas cheias
     const fallbackClasses = classesList.map((cls) => ({
       ...cls,
       slots: cls.slots.map((t) => ({
@@ -405,7 +410,6 @@ app.get("/api/classes", async (_req: Request, res: Response) => {
   } catch (error: any) {
     console.error("⚠️ Erro na rota /api/classes:", error?.message || error);
 
-    // Fallback de segurança para não retornar 500 no frontend
     const fallbackClasses = classesList.map((cls) => ({
       ...cls,
       slots: cls.slots.map((t) => ({
@@ -422,18 +426,21 @@ app.get("/api/classes", async (_req: Request, res: Response) => {
 
 app.post("/api/classes/book", async (req: Request, res: Response) => {
   try {
-    const { userId, classId, time } = req.body;
+    const { userId, classId, time, className } = req.body;
 
     if (!userId || !classId || !time) {
       return res.status(400).json({ error: "userId, classId e time são obrigatórios." });
     }
 
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ error: "Banco de dados inicializando. Tente em instantes." });
+    }
+
     const bookingId = `book-${Date.now()}`;
 
-    // Insere ou atualiza agendamento no MongoDB
     await BookedClass.findOneAndUpdate(
       { userId, classId },
-      { id: bookingId, userId, classId, time, bookedAt: new Date() },
+      { id: bookingId, userId, classId, className: className || "", time, bookedAt: new Date() },
       { upsert: true, new: true }
     );
 
@@ -443,13 +450,17 @@ app.post("/api/classes/book", async (req: Request, res: Response) => {
       bookingId,
     });
   } catch (error: any) {
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message || "Erro ao efetuar reserva." });
   }
 });
 
 app.post("/api/classes/cancel", async (req: Request, res: Response) => {
   try {
     const { userId, classId } = req.body;
+
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ error: "Banco de dados inicializando." });
+    }
 
     const result = await BookedClass.deleteOne({ userId, classId });
 
@@ -463,13 +474,18 @@ app.post("/api/classes/cancel", async (req: Request, res: Response) => {
   }
 });
 
-app.get("/api/users/:userId/bookings", async (req: Request, res: Response) => {
+// Suporte para ambas as estruturas de rota de agendamentos
+app.get(["/api/users/:userId/bookings", "/api/classes/booked/:userId"], async (req: Request, res: Response) => {
   try {
     const { userId } = req.params;
-    const bookings = await BookedClass.find({ userId });
-    return res.json(bookings);
+    if (mongoose.connection.readyState === 1) {
+      const bookings = await BookedClass.find({ userId });
+      return res.json(bookings);
+    }
+    return res.json([]);
   } catch (error) {
-    return res.status(500).json({ error: "Erro ao buscar agendamentos do usuário." });
+    console.error("❌ Erro ao buscar agendamentos do usuário:", error);
+    return res.status(200).json([]);
   }
 });
 
@@ -477,119 +493,11 @@ app.get("/api/users/:userId/bookings", async (req: Request, res: Response) => {
 // CONFIGURAÇÃO DO GROQ CLIENT & FERRAMENTAS DE IA
 // ============================================================
 
-const apiKey = process.env.GROQ_API_KEY;
+const apiKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
 let groq: Groq | null = null;
 
-if (apiKey) {
-  groq = new Groq({ apiKey });
-}
-
-const tools: Groq.Chat.CompletionCreateParams.Tool[] = [
-  {
-    type: "function",
-    function: {
-      name: "bookGymClass",
-      description: "Agenda e reserva oficialmente uma aula coletiva para o aluno na grade da MoveFIT.",
-      parameters: {
-        type: "object",
-        properties: {
-          classId: { type: "string", description: "ID da aula: 'pilates', 'spinning', 'fitdance' ou 'funcional'" },
-          time: { type: "string", description: "Horário da aula, ex: '07:00', '10:00', '18:00'" },
-        },
-        required: ["classId", "time"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "cancelGymClass",
-      description: "Cancela a reserva de uma aula coletiva agendada pelo aluno.",
-      parameters: {
-        type: "object",
-        properties: {
-          classId: { type: "string", description: "ID da aula a ser cancelada: 'pilates', 'spinning', 'fitdance' ou 'funcional'" },
-        },
-        required: ["classId"],
-      },
-    },
-  },
-];
-
-const CLASS_NAMES: Record<string, string> = {
-  pilates: "Pilates",
-  spinning: "Spinning",
-  fitdance: "FitDance",
-  funcional: "Treino Funcional",
-};
-
-function parseBookingIntent(text: string): { type: "BOOK_CLASS" | "CANCEL_CLASS"; classId: string; time?: string; className: string } | null {
-  const lower = text.toLowerCase();
-
-  if (lower.includes("cancela") || lower.includes("desmarca") || lower.includes("remover aula") || lower.includes("tirar minha vaga")) {
-    if (lower.includes("pilates")) return { type: "CANCEL_CLASS", classId: "pilates", className: "Pilates" };
-    if (lower.includes("spinning") || lower.includes("bike")) return { type: "CANCEL_CLASS", classId: "spinning", className: "Spinning" };
-    if (lower.includes("fitdance") || lower.includes("dança") || lower.includes("danca")) return { type: "CANCEL_CLASS", classId: "fitdance", className: "FitDance" };
-    if (lower.includes("funcional")) return { type: "CANCEL_CLASS", classId: "funcional", className: "Treino Funcional" };
-  }
-
-  const isBooking = lower.includes("agenda") || lower.includes("marca") || lower.includes("reserva") || lower.includes("quero fazer") || lower.includes("inscrever") || lower.includes("coloca meu nome");
-
-  if (isBooking) {
-    let classId = "";
-    let className = "";
-    let defaultTimes: string[] = [];
-
-    if (lower.includes("pilates")) { classId = "pilates"; className = "Pilates"; defaultTimes = ["07:00", "10:00", "18:00"]; }
-    else if (lower.includes("spinning") || lower.includes("bike")) { classId = "spinning"; className = "Spinning"; defaultTimes = ["06:30", "12:00", "19:30"]; }
-    else if (lower.includes("fitdance") || lower.includes("dança") || lower.includes("danca")) { classId = "fitdance"; className = "FitDance"; defaultTimes = ["11:00", "19:00"]; }
-    else if (lower.includes("funcional")) { classId = "funcional"; className = "Treino Funcional"; defaultTimes = ["07:30", "17:30", "18:30"]; }
-
-    if (classId) {
-      let selectedTime = defaultTimes[0];
-      for (const t of defaultTimes) {
-        if (lower.includes(t) || lower.includes(t.replace(":", "h"))) {
-          selectedTime = t;
-          break;
-        }
-      }
-      return { type: "BOOK_CLASS", classId, time: selectedTime, className };
-    }
-  }
-
-  return null;
-}
-
-async function processVicActionInDatabase(action: any, userId?: string) {
-  if (!action || !userId) return;
-  try {
-    if (action.type === "BOOK_CLASS" && action.classId && action.time) {
-      await BookedClass.findOneAndUpdate(
-        { userId, classId: action.classId },
-        { id: `book-${Date.now()}`, userId, classId: action.classId, time: action.time, bookedAt: new Date() },
-        { upsert: true }
-      );
-    } else if (action.type === "CANCEL_CLASS" && action.classId) {
-      await BookedClass.deleteOne({ userId, classId: action.classId });
-    }
-  } catch (error) {
-    console.error("⚠️ Erro ao atualizar o MongoDB via Vic:", error);
-  }
-}
-
-async function saveChatMessageToDb(sessionId: string | undefined, userId: string | undefined, role: string, content: string, action: any) {
-  if (!sessionId || !userId || !content) return;
-  try {
-    const msgId = "msg-" + Date.now() + "-" + Math.floor(Math.random() * 1000);
-    await ChatMessage.create({ id: msgId, sessionId, userId, role, content, action, timestamp: new Date() });
-
-    if (role === "user") {
-      const titleSnippet = content.length > 25 ? content.substring(0, 25) + "..." : content;
-      await ChatSession.updateOne({ id: sessionId, title: "Nova conversa com a Vic" }, { title: titleSnippet });
-    }
-  } catch (err) {
-    console.error("⚠️ Erro ao salvar mensagem no MongoDB:", err);
-  }
+if (process.env.GROQ_API_KEY) {
+  groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 }
 
 // ============================================================
@@ -601,70 +509,140 @@ app.get("/api/health", (_req: Request, res: Response) => {
 });
 
 // ============================================================
-// VIC CHAT ASSISTANT ENDPOINT (GROQ)
+// VIC CHAT ASSISTANT ENDPOINT (GROQ + FUNCTION CALLING + MONGO)
 // ============================================================
 
 app.post("/api/vic/chat", async (req: Request, res: Response) => {
   try {
-    const { userId, message } = req.body;
+    const { userId, sessionId, message } = req.body;
 
     if (!message) {
       return res.status(400).json({ error: "Mensagem não informada." });
     }
 
-    // 1. Busca contexto do usuário no MongoDB (se conectado)
-    let userContext = "Usuário sem perfil cadastrado.";
+    // 1. Busca o perfil e contexto do aluno no MongoDB
+    let userContext = "Aluno visitante (sem dados de perfil).";
     if (mongoose.connection.readyState === 1 && userId) {
       const user = await User.findOne({ id: userId });
       if (user) {
-        userContext = `Nome: ${user.fullName}, Nível: ${user.trainingLevel}, Restrições: ${user.medicalNotes}`;
+        userContext = `Nome: ${user.fullName}, Nível: ${user.trainingLevel}, Peso: ${user.weight || "N/I"}kg, Altura: ${user.height || "N/I"}cm, Restrições Médicas: ${user.medicalNotes}`;
       }
     }
 
-    // 2. Chave de API para o modelo de linguagem (Groq / Gemini)
-    const apiKey = process.env.GROQ_API_KEY || process.env.GEMINI_API_KEY;
-
-    if (!apiKey) {
-      // Fallback amigável caso a chave de IA não esteja configurada no Render
-      return res.json({
-        response: "Olá! Sou a Vic 🏋️‍♀️. Minha conexão com o modelo de IA está sendo configurada nas variáveis do servidor, mas estou pronta para te ajudar no treino!",
-      });
+    // 2. Salva a mensagem do usuário no histórico do banco
+    if (sessionId && userId) {
+      await saveChatMessageToDb(sessionId, userId, "user", message, null);
     }
 
-    // 3. Chamada para a API da IA (exemplo Groq/Fetch)
-    const aiResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+    // 3. Deteta intenções diretas de agendamento/cancelamento (Fallback Regex)
+    const detectedAction = parseBookingIntent(message);
+    if (detectedAction && userId) {
+      await processVicActionInDatabase(detectedAction, userId);
+    }
+
+    // 4. Se a API Key não estiver configurada no Render, devolve resposta amigável
+    if (!apiKey) {
+      const fallbackMsg = "Olá! Sou a Vic 🏋️‍♀️. Minha conexão com o modelo de IA está sendo configurada nas variáveis do servidor, mas estou pronta para te ajudar no treino!";
+      if (sessionId && userId) {
+        await saveChatMessageToDb(sessionId, userId, "assistant", fallbackMsg, detectedAction);
+      }
+      return res.json({ response: fallbackMsg, action: detectedAction });
+    }
+
+    // 5. Chamada completa à IA (Groq) com Prompt do System + Regras da Vic
+    const systemPrompt = `Você é a Vic, uma personal trainer virtual em 3D e assistente oficial da academia MoveFIT.
+Sua personalidade é extremamente motivadora, descontraída, acolhedora e focada em resultados com saúde.
+
+REGRAS DE COMPORTAMENTO:
+1. Trate o aluno pelo nome e leve em consideração suas métricas e restrições médicas.
+2. Dê dicas de treino claras, exercícios práticos e incentivo constante.
+3. Se o aluno pedir para agendar ou cancelar aulas (Pilates, Spinning, FitDance, Treino Funcional), use as ferramentas (tools) disponíveis ou confirme que a aula foi atualizada.
+4. Mantenha as respostas objetivas e formatadas para leitura confortável em mobile.
+
+CONTEXTO DO ALUNO ATUAL:
+${userContext}`;
+
+    let replyText = "";
+    let executedAction: any = detectedAction;
+
+    if (groq) {
+      // Uso do SDK do Groq com suporte a ferramentas (Tools / Function Calling)
+      const chatCompletion = await groq.chat.completions.create({
         messages: [
-          {
-            role: "system",
-            content: `Você é a Vic, uma personal trainer virtual em 3D da academia MoveFIT. Seja motivadora, descontraída e acolhedora. Contexto do aluno: ${userContext}`,
-          },
+          { role: "system", content: systemPrompt },
           { role: "user", content: message },
         ],
-      }),
-    });
+        model: "llama-3.3-70b-versatile",
+        tools,
+        tool_choice: "auto",
+      });
 
-    if (!aiResponse.ok) {
-      throw new Error(`Erro na API de IA: ${aiResponse.statusText}`);
+      const choice = chatCompletion.choices[0];
+      const toolCalls = choice?.message?.tool_calls;
+
+      if (toolCalls && toolCalls.length > 0) {
+        for (const toolCall of toolCalls) {
+          const fnName = toolCall.function.name;
+          const args = JSON.parse(toolCall.function.arguments || "{}");
+
+          if (fnName === "bookGymClass" && userId) {
+            executedAction = {
+              type: "BOOK_CLASS",
+              classId: args.classId,
+              time: args.time,
+              className: CLASS_NAMES[args.classId] || args.classId,
+            };
+            await processVicActionInDatabase(executedAction, userId);
+            replyText = `Com certeza! Agendei sua aula de ${executedAction.className} às ${args.time}. Te vejo lá! 🏋️‍♀️`;
+          } else if (fnName === "cancelGymClass" && userId) {
+            executedAction = {
+              type: "CANCEL_CLASS",
+              classId: args.classId,
+              className: CLASS_NAMES[args.classId] || args.classId,
+            };
+            await processVicActionInDatabase(executedAction, userId);
+            replyText = `Prontinho! Cancelei sua reserva na aula de ${executedAction.className}. Se precisar remarcar, é só chamar!`;
+          }
+        }
+      }
+
+      if (!replyText) {
+        replyText = choice?.message?.content || "Estou pronta para treinar! Como posso te ajudar hoje?";
+      }
+    } else {
+      // Fallback via Fetch HTTP caso o SDK do Groq não seja instanciado
+      const aiResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: message },
+          ],
+        }),
+      });
+
+      const data = await aiResponse.json();
+      replyText = data.choices[0]?.message?.content || "Estou pronta para te ajudar com os treinos!";
     }
 
-    const data = await aiResponse.json();
-    const reply = data.choices[0]?.message?.content || "Desculpe, não consegui processar a resposta agora.";
+    // 6. Salva a resposta da Vic no histórico do banco
+    if (sessionId && userId) {
+      await saveChatMessageToDb(sessionId, userId, "assistant", replyText, executedAction);
+    }
 
-    return res.json({ response: reply });
+    return res.json({ response: replyText, action: executedAction });
 
   } catch (error: any) {
     console.error("❌ Erro no chat da Vic:", error?.message || error);
     
-    // Retorna SEMPRE um JSON válido para evitar a tela de erro no frontend
     return res.status(200).json({
       response: "Tive um pequeno percalço na conexão com meu servidor, mas já estou de volta! Como posso te ajudar com o treino hoje?",
+      action: null,
     });
   }
 });
@@ -676,16 +654,16 @@ app.post("/api/vic/chat", async (req: Request, res: Response) => {
 app.post("/api/vic/speech", async (req: Request, res: Response) => {
   try {
     const { text } = req.body;
-    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const elevenKey = process.env.ELEVENLABS_API_KEY;
 
-    if (!apiKey) return res.status(500).json({ error: "ELEVENLABS_API_KEY ausente." });
+    if (!elevenKey) return res.status(500).json({ error: "ELEVENLABS_API_KEY ausente." });
 
     const cleanText = text.replace(/\[EXERCISES:.*?\]/gi, "").trim();
     const SAFE_FREE_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
 
     const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${SAFE_FREE_VOICE_ID}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "xi-api-key": apiKey },
+      headers: { "Content-Type": "application/json", "xi-api-key": elevenKey },
       body: JSON.stringify({
         text: cleanText,
         model_id: "eleven_flash_v2_5",
@@ -709,10 +687,11 @@ app.post("/api/vic/speech", async (req: Request, res: Response) => {
 
 app.get("/api/vic/sessions/:userId", async (req: Request, res: Response) => {
   try {
+    if (mongoose.connection.readyState !== 1) return res.json([]);
     const sessions = await ChatSession.find({ userId: req.params.userId }).sort({ createdAt: -1 });
     return res.json(sessions);
   } catch (error) {
-    return res.status(500).json({ error: "Erro ao buscar conversas." });
+    return res.status(200).json([]);
   }
 });
 
@@ -720,6 +699,9 @@ app.post("/api/vic/sessions", async (req: Request, res: Response) => {
   try {
     const { userId, title } = req.body;
     const sessionId = "session-" + Date.now();
+    if (mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ error: "Banco de dados inicializando." });
+    }
     const session = await ChatSession.create({ id: sessionId, userId, title: title || "Nova conversa com a Vic" });
     return res.status(201).json(session);
   } catch (error) {
@@ -729,10 +711,11 @@ app.post("/api/vic/sessions", async (req: Request, res: Response) => {
 
 app.get("/api/vic/messages/:sessionId", async (req: Request, res: Response) => {
   try {
+    if (mongoose.connection.readyState !== 1) return res.json([]);
     const messages = await ChatMessage.find({ sessionId: req.params.sessionId }).sort({ timestamp: 1 });
     return res.json(messages);
   } catch (error) {
-    return res.status(500).json({ error: "Erro ao buscar mensagens." });
+    return res.status(200).json([]);
   }
 });
 
@@ -741,7 +724,7 @@ app.get("/api/vic/messages/:sessionId", async (req: Request, res: Response) => {
 // ============================================================
 
 async function startServer() {
-  // Conecta ao MongoDB
+  // Conecta ao MongoDB antes de abrir a porta HTTP
   await connectDB();
 
   if (process.env.NODE_ENV !== "production") {
