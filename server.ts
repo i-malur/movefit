@@ -13,23 +13,55 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json({ limit: "2mb" }));
 
 // ============================================================
-// CONEXÃO AO MONGODB ATLAS
+// CONEXÃO SEGUIRA AO MONGODB ATLAS & INICIALIZAÇÃO
 // ============================================================
 
 const mongoURI = process.env.MONGODB_URI;
 
-if (mongoURI) {
-  mongoose
-    .connect(mongoURI)
-    .then(async () => {
-      console.log("✅ Banco de dados MongoDB conectado com sucesso!");
-      // O seed executa APENAS após a conexão estar concluída
-      await seedDatabase();
-    })
-    .catch((err) => console.error("❌ Erro ao conectar ao MongoDB Atlas:", err));
-} else {
-  console.warn("⚠️ MONGODB_URI não configurada nas variáveis de ambiente!");
+async function connectDB() {
+  if (!mongoURI) {
+    console.warn("⚠️ MONGODB_URI não configurada nas variáveis de ambiente do Render!");
+    return;
+  }
+
+  try {
+    // Define timeout de seleção de servidor para evitar buffering infinito
+    await mongoose.connect(mongoURI, {
+      serverSelectionTimeoutMS: 5000,
+    });
+    console.log("✅ Banco de dados MongoDB conectado com sucesso!");
+
+    // Executa o seed APENAS após a conexão estar 100% estabelecida
+    await seedDatabase();
+  } catch (err: any) {
+    console.error("❌ Erro ao conectar ao MongoDB Atlas:", err?.message || err);
+  }
 }
+
+// ============================================================
+// VITE / SERVIDOR DE PRODUÇÃO
+// ============================================================
+
+async function startServer() {
+  // Conecta ao MongoDB
+  await connectDB();
+
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (_req: Request, res: Response) => res.sendFile(path.join(distPath, "index.html")));
+  }
+
+  app.listen(PORT, () => {
+    console.log(`🚀 MoveFIT rodando na porta: ${PORT}`);
+  });
+}
+
+// Inicia a aplicação
+startServer();
 
 // ============================================================
 // MONGOOSE SCHEMAS & MODELS
