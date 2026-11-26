@@ -6,6 +6,7 @@ import { UserHeader } from "./components/UserHeader";
 import { ClassesTab } from "./components/ClassesTab";
 import { VicChatTab } from "./components/VicChatTab";
 import { ProfileTab } from "./components/ProfileTab";
+import { AboutVicTab } from "./components/AboutVicTab";
 
 const DEFAULT_DEMO_USER: User = {
   id: "user-demo-1",
@@ -46,7 +47,7 @@ export default function App() {
   const [savedRecommendations, setSavedRecommendations] = useState<SavedRecommendation[]>([]);
   const [gymClasses, setGymClasses] = useState<GymClass[]>(INITIAL_CLASSES);
   const [bookedClasses, setBookedClasses] = useState<BookedClass[]>([]);
-  const [activeTab, setActiveTab] = useState<"classes" | "vic" | "profile">("classes");
+  const [activeTab, setActiveTab] = useState<"classes" | "vic" | "profile" | "about-vic">("classes");
 
   const activeUserId = currentUser?.id || (currentUser as any)?._id || "";
 
@@ -325,6 +326,8 @@ export default function App() {
             onRemoveRecommendation={handleRemoveRecommendation}
             onNavigateToProfile={() => setActiveTab("profile")}
           />
+        ) : activeTab === "about-vic" ? (
+          <AboutVicTab onStartChat={() => setActiveTab("vic")} />
         ) : (
           <ProfileTab
             user={currentUser}
